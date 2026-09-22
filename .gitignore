@@ -1,0 +1,26 @@
+# Raw / processed data (too large for version control, and reproducible from source)
+data/raw/*.csv
+data/processed/*
+
+# Generated outputs (reproducible by re-running the pipeline)
+outputs/models/*
+outputs/metrics/*
+outputs/figures/*
+!outputs/models/.gitkeep
+!outputs/metrics/.gitkeep
+!outputs/figures/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# CatBoost writes training logs here by default (train_dir param)
+catboost_info/
+
+# venv
+venv/
+env/
+
+# OS
+.DS_Store

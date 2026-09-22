@@ -1,0 +1,20 @@
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+matplotlib>=3.7
+seaborn>=0.12
+statsmodels>=0.14
+joblib>=1.3
+xgboost>=2.0
+lightgbm>=4.0
+catboost>=1.2
+requests>=2.31
+pvlib>=0.10
+
+# Optional, heavy dependency — only needed for the "keras_nn" model in
+# src/models.py. Everything else in the project runs fine without it;
+# if it's not installed, keras_nn is silently skipped (see HAS_TENSORFLOW
+# in src/models.py). Use tensorflow-cpu if you don't have a GPU set up.
+tensorflow>=2.15
+streamlit>=1.30
+plotly>=5.15
