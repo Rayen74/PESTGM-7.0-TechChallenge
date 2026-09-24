@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "Tunisie Solar Power Forecasting | STEG Grid Dispatch",
@@ -18,7 +19,7 @@ export default function RootLayout({
   return (
     <html lang="fr" className="dark">
       <body className="antialiased selection:bg-amber-500/30 selection:text-amber-200">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

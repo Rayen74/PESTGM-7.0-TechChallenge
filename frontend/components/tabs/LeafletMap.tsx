@@ -61,7 +61,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         const normalized = (gov.peak_power - minPeak) / range;
 
         // Elegant, compact radius between 5px and 12px (much smaller, no overlapping blob)
-        const radius = 5 + normalized * 7;
+        const radius = 3 + normalized * 5;
 
         // Distinct color gradient
         const color =
@@ -121,6 +121,13 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
 
         markersLayer.addLayer(circleMarker);
       });
+      // Fit map to all governorate markers for full view
+      if (mapInstanceRef.current) {
+        const bounds = L.latLngBounds(
+          governorates.map((g) => [g.latitude, g.longitude] as [number, number])
+        );
+        mapInstanceRef.current.fitBounds(bounds, { padding: [20, 20] });
+      }
     }
   }, [governorates, displayUnit, onSelectGov]);
 

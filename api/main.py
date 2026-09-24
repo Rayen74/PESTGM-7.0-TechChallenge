@@ -42,6 +42,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount Battery Module Router
+from api.routes_battery import router as battery_router
+app.include_router(battery_router)
+
 
 def get_cached_or_generate_forecast() -> pd.DataFrame:
     latest_path = config.DATA_PROCESSED_DIR / "latest_forecast.csv"
