@@ -248,24 +248,21 @@ def init_db():
 
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_battery_requests_user_id ON battery_requests(user_id);")
 
-                # Seed test users if empty
-                cursor.execute("SELECT COUNT(*) FROM users;")
-                if cursor.fetchone()[0] == 0:
-                    admin_pw = hash_password("admin123")
-                    citizen_pw = hash_password("citizen123")
-                    cursor.execute("""
-                    INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
-                    VALUES 
-                        (%s, %s, %s, %s, %s),
-                        (%s, %s, %s, %s, %s);
-                    """, (
-                        'admin@example.com', admin_pw, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001',
-                        'citizen@example.com', citizen_pw, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN'
-                    ))
+                # Ensure default demo accounts exist with correct passwords
+                admin_pw = hash_password("admin123")
+                citizen_pw = hash_password("citizen123")
+                cursor.execute("""
+                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
+                VALUES 
+                    ('admin@example.com', %s, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001'),
+                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN')
+                ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+                """, (admin_pw, citizen_pw))
 
                 # Seed battery catalog if empty
                 cursor.execute("SELECT COUNT(*) FROM battery_catalog;")
                 if cursor.fetchone()[0] == 0:
+
                     _seed_battery_catalog_postgres(cursor)
 
         else:
@@ -362,20 +359,20 @@ def init_db():
             );
             """)
 
-            # Seed default test users if empty
-            cursor.execute("SELECT COUNT(*) as cnt FROM users;")
-            if cursor.fetchone()["cnt"] == 0:
-                admin_pw = hash_password("admin123")
-                citizen_pw = hash_password("citizen123")
-                cursor.execute("""
-                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
-                VALUES 
-                    ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001'),
-                    ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN');
-                """, (admin_pw, citizen_pw))
+            # Ensure default demo accounts exist with correct passwords
+            admin_pw = hash_password("admin123")
+            citizen_pw = hash_password("citizen123")
+            cursor.execute("""
+            INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
+            VALUES 
+                ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001'),
+                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN')
+            ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;
+            """, (admin_pw, citizen_pw))
 
             cursor.execute("SELECT COUNT(*) as cnt FROM battery_catalog;")
             if cursor.fetchone()["cnt"] == 0:
+
                 _seed_battery_catalog_sqlite(cursor)
 
 

@@ -40,6 +40,7 @@ from api.battery_engine import (
 )
 from src import config
 from src.forecast import GOVERNORATES, predict_for_all_governorates, save_forecast
+from api.agent.technical_agent import audit_request_dossier, recommend_optimal_battery
 
 router = APIRouter(prefix="/api/battery", tags=["Battery Module"])
 
@@ -118,6 +119,10 @@ class InstallationStageUpdate(BaseModel):
     commissioning_date: Optional[str] = None
     steg_meter_ref: Optional[str] = None
     notes: Optional[str] = None
+
+
+class AgentRecommendRequest(BaseModel):
+    appliances: Optional[List[ApplianceItem]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -651,3 +656,54 @@ def update_installation_stage(
         )
 
     return {"status": "success", "message": f"Étape d'installation de la demande #{request_id} mise à jour: {req.stage}"}
+
+
+# ---------------------------------------------------------------------------
+# 8. Agentic AI — Battery Technical Agent
+# ---------------------------------------------------------------------------
+@router.post("/agent/audit-request/{request_id}")
+def audit_request_with_agent(
+    request_id: int,
+    admin: Dict[str, Any] = Depends(get_current_admin)
+):
+    """
+    Agentic AI endpoint for STEG Admins:
+    Orchestrates deterministic tools (get_installation, check_compatibility,
+    get_pv_prediction, simulate_battery, compare_batteries) to perform an
+    automated electrotechnical audit and recommend an informed approval decision.
+    """
+    with get_db() as conn:
+        try:
+            audit_report = audit_request_dossier(conn, request_id)
+            return audit_report
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Erreur d'audit par l'agent IA : {str(e)}")
+
+
+@router.post("/agent/recommend")
+def recommend_battery_with_agent(
+    req: AgentRecommendRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Agentic AI advisor endpoint for Citizens:
+    Scans certified catalog batteries, checks technical compatibility with
+    user's inverter, and runs dispatch simulation against custom appliances
+    to recommend the optimal storage solution.
+    """
+    with get_db() as conn:
+        try:
+            appliances_data = [a.model_dump() for a in req.appliances] if req.appliances else []
+            recommendation = recommend_optimal_battery(conn, user["id"], appliances_data)
+            return recommendation
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Erreur du conseiller IA : {str(e)}")
+

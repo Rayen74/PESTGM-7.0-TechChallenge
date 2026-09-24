@@ -238,26 +238,105 @@ def simulate_battery_dispatch(
     steg_tariff_tnd = 0.260
     estimated_bill_savings_tnd = round(total_discharged * steg_tariff_tnd, 2)
 
+    # Equivalent full cycles
+    equivalent_cycles = (total_discharged / usable_capacity_kwh) if usable_capacity_kwh > 0 else 0.0
+
     return {
         "kpis": {
             "self_consumption_pct": round(self_consumption_pct, 1),
             "self_sufficiency_pct": round(self_sufficiency_pct, 1),
-            "self_sufficiency_gain_pct": round(self_sufficiency_pct - baseline_self_sufficiency, 1),
-            "grid_dependency_pct": round(100.0 - self_sufficiency_pct, 1),
-            "total_solar_kwh": round(total_pv, 2),
-            "total_demand_kwh": round(total_load, 2),
+            "baseline_self_sufficiency_pct": round(baseline_self_sufficiency, 1),
+            "total_solar_generated_kwh": round(total_pv, 2),
+            "total_direct_solar_consumed_kwh": round(total_direct_solar, 2),
             "total_charged_kwh": round(total_charged, 2),
             "total_discharged_kwh": round(total_discharged, 2),
             "total_grid_import_kwh": round(total_imported, 2),
             "total_grid_export_kwh": round(total_exported, 2),
+            "total_curtailment_prevented_kwh": round(total_charged, 2),
+            "battery_equivalent_cycles": round(equivalent_cycles, 2),
             "backup_autonomy_hours": backup_hours,
             "estimated_savings_tnd": estimated_bill_savings_tnd,
         },
+        "timeseries": timeline,
         "timeline": timeline,
-        "battery_info": {
-            "brand": battery.get("brand"),
-            "model": battery.get("model"),
-            "usable_capacity_kwh": usable_capacity_kwh,
-            "chemistry": battery.get("chemistry"),
-        }
     }
+
+
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("🔋 BATTERY ENGINE SELF-TEST & VALIDATION")
+    print("=" * 60)
+
+    # 1. Test Inverter & Battery Compatibility
+    test_inverter = {
+        "inverter_brand": "Growatt",
+        "inverter_model": "SPH 5000",
+        "inverter_type": "HYBRID",
+        "battery_bus_type": "LV_48V",
+        "inverter_rated_power_kw": 5.0,
+    }
+
+    test_battery_compat = {
+        "id": 1,
+        "brand": "Pylontech",
+        "model": "US5000",
+        "voltage_type": "LV_48V",
+        "nominal_capacity_kwh": 4.8,
+        "usable_capacity_kwh": 4.56,
+        "max_c_rate": 0.5,
+        "roundtrip_efficiency": 0.95,
+        "supported_inverters": ["Growatt", "Victron", "Deye"],
+    }
+
+    test_battery_incompat = {
+        "id": 2,
+        "brand": "BYD",
+        "model": "Battery-Box Premium HVS",
+        "voltage_type": "HV_HIGH_VOLTAGE",
+        "nominal_capacity_kwh": 5.1,
+        "usable_capacity_kwh": 5.1,
+        "max_c_rate": 1.0,
+        "roundtrip_efficiency": 0.96,
+        "supported_inverters": ["Fronius", "SMA"],
+    }
+
+    ok, notes = check_battery_compatibility(test_inverter, test_battery_compat)
+    print(f"\n[Test 1] Compatibility Check (Pylontech 48V on Growatt 48V):")
+    print(f" -> Compatible: {'✅ YES' if ok else '❌ NO'} | Notes: {notes}")
+
+    ok2, notes2 = check_battery_compatibility(test_inverter, test_battery_incompat)
+    print(f"\n[Test 2] Incompatibility Check (BYD High-Voltage on Growatt 48V):")
+    print(f" -> Compatible: {'✅ YES' if ok2 else '❌ NO (Expected)'} | Reasons: {notes2}")
+
+    # 2. Test 24-hour Physical Simulation
+    sample_pv_curve = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.2, 0.8, 1.8, 3.2, 4.1, 4.5,
+        4.4, 3.9, 2.8, 1.5, 0.4, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+    sample_load_curve = generate_hourly_consumption("residential_evening_peak", annual_kwh=4500.0, num_hours=24)
+
+    print(f"\n[Tool Invoked]: simulate_battery_dispatch()")
+    print(f" -> Input: 24h PV vector, 24h load vector, battery capacity=4.56 kWh, initial_soc=30%")
+    sim_result = simulate_battery_dispatch(
+        pv_series_kw=sample_pv_curve,
+        consumption_series_kw=sample_load_curve,
+        battery=test_battery_compat,
+        initial_soc_pct=30.0,
+    )
+
+    kpis = sim_result["kpis"]
+    print(f"\n[Test 3] Physical Dispatch Simulation (24h Results):")
+    print(f" -> Solar Total Generated:       {kpis['total_solar_generated_kwh']} kWh")
+    print(f" -> Direct Solar Consumed:       {kpis['total_direct_solar_consumed_kwh']} kWh")
+    print(f" -> Battery Energy Charged:      {kpis['total_charged_kwh']} kWh")
+    print(f" -> Battery Energy Discharged:   {kpis['total_discharged_kwh']} kWh")
+    print(f" -> Self-Sufficiency without Bat:{kpis['baseline_self_sufficiency_pct']}%")
+    print(f" -> Self-Sufficiency WITH Bat:   {kpis['self_sufficiency_pct']}% (+{round(kpis['self_sufficiency_pct'] - kpis['baseline_self_sufficiency_pct'], 1)}%)")
+    print(f" -> Grid Import:                 {kpis['total_grid_import_kwh']} kWh")
+    print(f" -> Estimated Savings:           {kpis['estimated_savings_tnd']} TND")
+    print("=" * 60)
+
+

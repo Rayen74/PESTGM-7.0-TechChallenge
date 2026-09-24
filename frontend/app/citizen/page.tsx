@@ -10,8 +10,9 @@ import {
   submitBatteryRequest,
   fetchPVProfile,
   savePVProfile,
+  getAgentRecommendation,
 } from "@/lib/api";
-import { BatteryItem, BatteryRequestItem, ApplianceItem } from "@/lib/types";
+import { BatteryItem, BatteryRequestItem, ApplianceItem, AgentRecommendation } from "@/lib/types";
 import {
   Sun,
   LogOut,
@@ -35,6 +36,8 @@ import {
   X,
   Wrench,
   Calendar,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 
 
@@ -114,6 +117,28 @@ export default function CitizenDashboard() {
     if (activeTab === "catalog") loadCatalog();
     if (activeTab === "requests") loadRequests();
   }, [activeTab, loadCatalog, loadRequests]);
+
+  // ---------- AI Recommendation State ----------
+  const [aiRecommendation, setAiRecommendation] = useState<AgentRecommendation | null>(null);
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
+
+  const loadAiRecommendation = useCallback(async () => {
+    setLoadingRecommendation(true);
+    try {
+      const rec = await getAgentRecommendation([]);
+      setAiRecommendation(rec);
+    } catch {
+      setAiRecommendation(null);
+    } finally {
+      setLoadingRecommendation(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "catalog" && !aiRecommendation && !loadingRecommendation) {
+      loadAiRecommendation();
+    }
+  }, [activeTab, aiRecommendation, loadingRecommendation, loadAiRecommendation]);
 
   // ---------- Appliance Modal State ----------
   const [selectedBattery, setSelectedBattery] = useState<BatteryItem | null>(null);
@@ -396,6 +421,78 @@ export default function CitizenDashboard() {
                 Sélectionnez une batterie certifiée STEG et soumettez votre demande d&apos;installation
               </p>
             </div>
+
+            {/* AI Recommendation Card */}
+            {loadingRecommendation ? (
+              <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/30 to-slate-900 p-5 flex items-center gap-4">
+                <div className="relative shrink-0">
+                  <div className="w-10 h-10 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin" />
+                  <Bot className="w-4 h-4 text-indigo-400 absolute inset-0 m-auto" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-indigo-300">Conseiller IA STEG en cours d&apos;analyse...</p>
+                  <p className="text-[11px] text-slate-500">Exécution des outils : compatibilité, prédiction solaire, simulation de dispatch.</p>
+                </div>
+              </div>
+            ) : aiRecommendation?.has_recommendation && aiRecommendation.recommended_battery ? (
+              <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/20 to-slate-900 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                      <Bot className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                        Recommandation IA
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Agent IA
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">Batterie optimale pour votre installation PV et appareils</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3.5 rounded-lg bg-slate-950/60 border border-slate-800">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-emerald-400">
+                      {aiRecommendation.recommended_battery.brand} {aiRecommendation.recommended_battery.model}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {aiRecommendation.recommended_battery.usable_capacity_kwh} kWh · {aiRecommendation.recommended_battery.voltage_type === "HV" ? "Haute Tension" : "48V"} · Autonomie {aiRecommendation.recommended_battery.self_sufficiency_pct?.toFixed(1)}%
+                    </p>
+
+                    {aiRecommendation.reasoning && (
+                      <ul className="mt-2 space-y-1">
+                        {aiRecommendation.reasoning.map((r, i) => (
+                          <li key={i} className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const bat = batteries.find(b => b.id === aiRecommendation.recommended_battery!.battery_id);
+                      if (bat) openApplianceModal(bat);
+                    }}
+                    className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 hover:brightness-110 transition-all cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Choisir cette batterie
+                  </button>
+                </div>
+              </div>
+            ) : aiRecommendation && !aiRecommendation.has_recommendation ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-center gap-3 text-xs text-amber-300">
+                <Bot className="w-5 h-5 shrink-0" />
+                <span>{aiRecommendation.message || "Aucune batterie compatible trouvée pour votre installation actuelle."}</span>
+              </div>
+            ) : null}
 
             {loadingCatalog ? (
               <div className="flex items-center justify-center py-20">

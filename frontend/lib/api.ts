@@ -11,6 +11,8 @@ import {
   BatteryRequestItem,
   ApplianceItem,
   User,
+  AgentAuditReport,
+  AgentRecommendation,
 } from "./types";
 
 
@@ -353,3 +355,35 @@ export async function updateInstallationStage(
   if (!res.ok) throw new Error("Échec de mise à jour du suivi d'installation");
   return res.json();
 }
+
+export async function auditRequestWithAgent(requestId: number): Promise<AgentAuditReport> {
+  const res = await fetch(`${API_BASE}/api/battery/agent/audit-request/${requestId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Échec de l'audit technique par l'agent IA");
+  }
+  return res.json();
+}
+
+export async function getAgentRecommendation(appliances?: ApplianceItem[]): Promise<AgentRecommendation> {
+  const res = await fetch(`${API_BASE}/api/battery/agent/recommend`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({ appliances: appliances || [] }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Échec de la recommandation par le conseiller IA");
+  }
+  return res.json();
+}
+

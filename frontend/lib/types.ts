@@ -233,3 +233,50 @@ export interface BatteryRequestItem {
   steg_meter_ref?: string;
 }
 
+export interface AgentAuditReport {
+  request_id: number;
+  citizen_name: string;
+  steg_contract_no?: string;
+  battery_selected: string;
+  score: number;
+  compatibility_verdict: "PASSED" | "FAILED";
+  sizing_ratio: number;
+  grid_impact: "HIGH_BENEFIT" | "MODERATE_BENEFIT" | "LOW_BENEFIT";
+  grid_impact_label: string;
+  suggested_decision: "APPROVED" | "REJECTED" | "INFO_REQUESTED";
+  suggested_reason: string;
+  llm_commentary?: string | null;
+  technical_findings: string[];
+  simulation_kpis: {
+    self_consumption_pct: number;
+    self_sufficiency_pct: number;
+    grid_import_kwh: number;
+    grid_export_kwh: number;
+    curtailment_prevented_kwh: number;
+  };
+  better_alternative?: {
+    battery_id: number;
+    name: string;
+    self_sufficiency_pct: number;
+    gain_pct: number;
+  } | null;
+  agent_version: string;
+}
+
+export interface AgentRecommendation {
+  has_recommendation: boolean;
+  message?: string;
+  recommended_battery?: {
+    battery_id: number;
+    brand: string;
+    model: string;
+    usable_capacity_kwh: number;
+    voltage_type: string;
+    self_consumption_pct: number;
+    self_sufficiency_pct: number;
+    backup_autonomy_hours: number;
+  };
+  reasoning?: string[];
+  all_compatible?: any[];
+}
+

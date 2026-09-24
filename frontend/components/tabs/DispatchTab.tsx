@@ -7,14 +7,12 @@ import { DispatchRecord } from "@/lib/types";
 interface DispatchTabProps {
   records: DispatchRecord[];
   displayUnit: string;
-  onDownloadCsv: () => void;
   onDownloadJson: () => void;
 }
 
 export const DispatchTab: React.FC<DispatchTabProps> = ({
   records,
   displayUnit,
-  onDownloadCsv,
   onDownloadJson,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,13 +44,7 @@ export const DispatchTab: React.FC<DispatchTabProps> = ({
 
         {/* Download Buttons */}
         <div className="flex flex-wrap items-center gap-3 pt-3">
-          <button
-            onClick={onDownloadCsv}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 transition-all text-xs font-bold cursor-pointer active:scale-95 shadow-lg shadow-emerald-950/20"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            📥 Télécharger CSV Dispatch (STEG)
-          </button>
+
 
           <button
             onClick={onDownloadJson}
