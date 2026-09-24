@@ -174,7 +174,7 @@ export async function registerUser(data: {
   return res.json();
 }
 
-export async function requestPasswordReset(email: string): Promise<{ status: string; message: string; reset_token?: string; email?: string }> {
+export async function requestPasswordReset(email: string): Promise<{ status: string; message: string; reset_token?: string; reset_url?: string; email?: string }> {
   const res = await fetch(`${API_BASE}/api/battery/auth/forgot-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -196,6 +196,43 @@ export async function resetPassword(token: string, newPassword: string): Promise
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || "Échec de la réinitialisation du mot de passe");
+  }
+  return res.json();
+}
+
+export async function resendEmailVerification(email: string): Promise<{
+  status: string;
+  message: string;
+  verification_url?: string;
+  token?: string;
+  expires_in_minutes: number;
+  cooldown_seconds: number;
+}> {
+  const res = await fetch(`${API_BASE}/auth/resend-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Échec du renvoi de l'email de vérification");
+  }
+  return res.json();
+}
+
+export async function verifyEmailToken(token: string): Promise<{
+  status: string;
+  message: string;
+  user?: User;
+}> {
+  const res = await fetch(`${API_BASE}/auth/verify-email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Échec de la vérification de l'email");
   }
   return res.json();
 }

@@ -175,7 +175,7 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
     with get_db() as conn:
         user = query_one(
             conn,
-            "SELECT id, email, full_name, role, steg_contract_no FROM users WHERE id = %s",
+            "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE id = %s",
             (user_id,)
         )
         if not user:
@@ -187,3 +187,121 @@ def get_current_admin(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[
     if user.get("role") != "ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux administrateurs STEG")
     return user
+
+
+# ---------------------------------------------------------------------------
+# Email Token Router & Endpoints
+# ---------------------------------------------------------------------------
+from fastapi import APIRouter
+from pydantic import BaseModel, EmailStr
+from api.database import execute_write
+from api.email_tokens import (
+    issue_token,
+    consume_token,
+    TokenExpired,
+    TokenAlreadyUsed,
+    TokenInvalid,
+)
+
+auth_router = APIRouter(prefix="/auth", tags=["Authentication & Verification"])
+
+# In-memory cooldown tracking for resend-email: {user_id: timestamp}
+_resend_cooldowns: Dict[int, float] = {}
+COOLDOWN_SECONDS = 30
+
+
+class ResendEmailRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+@auth_router.post("/resend-email")
+def resend_email(req: ResendEmailRequest):
+    """
+    Issues a new single-use verification email JWT with a 4-minute lifespan.
+    Enforces a 30-second cooldown per user.
+    Invalidates any older unused tokens for that user.
+    Never logs the raw token.
+    """
+    now = datetime.now(timezone.utc)
+    now_ts = now.timestamp()
+
+    with get_db() as conn:
+        user = query_one(conn, "SELECT id, email, full_name FROM users WHERE email = %s", (req.email,))
+        if not user:
+            # Prevent user enumeration with generic success message
+            return {
+                "status": "success",
+                "message": "Si l'adresse email existe, un nouveau lien de validation a été envoyé.",
+                "cooldown_seconds": COOLDOWN_SECONDS,
+            }
+
+        user_id = user["id"]
+
+        # Check 30-second cooldown
+        last_sent = _resend_cooldowns.get(user_id)
+        if last_sent is not None and (now_ts - last_sent) < COOLDOWN_SECONDS:
+            remaining = int(COOLDOWN_SECONDS - (now_ts - last_sent))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Veuillez patienter encore {remaining} secondes avant de renvoyer un email.",
+            )
+
+        # Issue token (invalidates old unused tokens, saves new jti)
+        token = issue_token(conn, user_id=user_id, purpose="verify_email")
+        _resend_cooldowns[user_id] = now_ts
+
+    # Construct frontend verification link (never log raw token)
+    frontend_base = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    verification_url = f"{frontend_base}/verify-email?token={token}"
+
+    return {
+        "status": "success",
+        "message": "Un nouveau lien de vérification a été généré et envoyé.",
+        "verification_url": verification_url,
+        "token": token,
+        "expires_in_minutes": 4,
+        "cooldown_seconds": COOLDOWN_SECONDS,
+    }
+
+
+@auth_router.post("/verify-email")
+def verify_email(req: VerifyEmailRequest):
+    """
+    Validates and redeems a single-use email verification token via POST.
+    Redeems the token before marking the user verified.
+    Maps each exception to a clear, unambiguous HTTP error.
+    """
+    with get_db() as conn:
+        try:
+            # 1. Redeem token first
+            user_id = consume_token(conn, token=req.token, purpose="verify_email")
+        except TokenExpired:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Le jeton de validation a expiré (durée de validité : 4 minutes).",
+            )
+        except TokenAlreadyUsed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ce jeton a déjà été utilisé.",
+            )
+        except TokenInvalid as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e) or "Jeton de validation invalide.",
+            )
+
+        # 2. Mark user verified after successful token redemption
+        execute_write(conn, "UPDATE users SET is_verified = TRUE WHERE id = %s", (user_id,))
+        user = query_one(conn, "SELECT id, email, full_name, role, is_verified FROM users WHERE id = %s", (user_id,))
+
+    return {
+        "status": "success",
+        "message": "Votre adresse email a été vérifiée avec succès.",
+        "user": user,
+    }
+

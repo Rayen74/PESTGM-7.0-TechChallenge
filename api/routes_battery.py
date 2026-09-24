@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
 import pandas as pd
+import os
 
 from api.database import (
     get_db,
@@ -32,6 +33,10 @@ from api.auth import (
     verify_password_reset_token,
     get_current_user,
     get_current_admin,
+    ResendEmailRequest,
+    VerifyEmailRequest,
+    resend_email,
+    verify_email,
 )
 from api.battery_engine import (
     generate_hourly_consumption,
@@ -199,23 +204,27 @@ def forgot_password(req: ForgotPasswordRequest):
     Verifies user exists, generates a signed 1-hour reset token,
     and returns instructions with reset token.
     """
+    email_clean = req.email.strip().lower()
     with get_db() as conn:
-        user = query_one(conn, "SELECT id, email, full_name FROM users WHERE email = %s", (req.email,))
+        user = query_one(conn, "SELECT id, email, full_name FROM users WHERE LOWER(email) = %s", (email_clean,))
     
     if not user:
-        # Avoid user enumeration by returning success message
-        return {
-            "status": "success",
-            "message": "Si cette adresse email existe dans notre base, un lien de réinitialisation a été généré.",
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Aucun compte n'est associé à cette adresse email. Veuillez vérifier votre saisie ou créer un compte."
+        )
 
     reset_token = create_password_reset_token(user["email"])
+    frontend_base = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    reset_url = f"{frontend_base}/forgot-password?token={reset_token}"
     return {
         "status": "success",
-        "message": "Un jeton de réinitialisation a été généré avec succès (valable 1 heure).",
+        "message": "Un lien de réinitialisation a été généré avec succès (valable 1 heure).",
         "reset_token": reset_token,
+        "reset_url": reset_url,
         "email": user["email"],
     }
+
 
 
 @router.post("/auth/reset-password")
@@ -242,6 +251,17 @@ def reset_password(req: ResetPasswordRequest):
         "status": "success",
         "message": "Votre mot de passe a été mis à jour avec succès. Vous pouvez maintenant vous connecter."
     }
+
+
+@router.post("/auth/resend-email")
+def battery_resend_email(req: ResendEmailRequest):
+    return resend_email(req)
+
+
+@router.post("/auth/verify-email")
+def battery_verify_email(req: VerifyEmailRequest):
+    return verify_email(req)
+
 
 
 # ---------------------------------------------------------------------------

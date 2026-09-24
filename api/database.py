@@ -136,15 +136,17 @@ def execute_insert_returning_id(conn, sql: str, params: tuple = (), id_column: s
         return cur.lastrowid
 
 
-def execute_write(conn, sql: str, params: tuple = ()):
-    """Executes an UPDATE, DELETE, or INSERT statement without returning an ID."""
+def execute_write(conn, sql: str, params: tuple = ()) -> int:
+    """Executes an UPDATE, DELETE, or INSERT statement and returns affected row count."""
     if USE_POSTGRES:
         with conn.cursor() as cur:
             cur.execute(sql, params)
+            return cur.rowcount
     else:
         sql_sqlite = sql.replace("%s", "?")
         cur = conn.cursor()
         cur.execute(sql_sqlite, params)
+        return cur.rowcount
 
 
 def init_db():
@@ -163,9 +165,15 @@ def init_db():
                     full_name TEXT NOT NULL,
                     role TEXT CHECK(role IN ('CITIZEN', 'ADMIN')) NOT NULL DEFAULT 'CITIZEN',
                     steg_contract_no TEXT,
+                    is_verified BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
                 """)
+                # Ensure is_verified exists on legacy users table
+                try:
+                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;")
+                except Exception:
+                    pass
 
                 # 2. PV Profiles table
                 cursor.execute("""
@@ -230,7 +238,6 @@ def init_db():
                 except Exception:
                     pass
 
-
                 # 5. Installation Tracking table
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS installation_tracking (
@@ -248,21 +255,32 @@ def init_db():
 
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_battery_requests_user_id ON battery_requests(user_id);")
 
+                # 6. Email Tokens table (JWT single-use verification)
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS email_tokens (
+                    jti TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    purpose TEXT NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    used_at TIMESTAMPTZ DEFAULT NULL
+                );
+                """)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens(user_id);")
+
                 # Ensure default demo accounts exist with correct passwords
                 admin_pw = hash_password("admin123")
                 citizen_pw = hash_password("citizen123")
                 cursor.execute("""
-                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
+                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
                 VALUES 
-                    ('admin@example.com', %s, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001'),
-                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN')
+                    ('admin@example.com', %s, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', TRUE),
+                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', TRUE)
                 ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
                 """, (admin_pw, citizen_pw))
 
                 # Seed battery catalog if empty
                 cursor.execute("SELECT COUNT(*) FROM battery_catalog;")
                 if cursor.fetchone()[0] == 0:
-
                     _seed_battery_catalog_postgres(cursor)
 
         else:
@@ -276,9 +294,15 @@ def init_db():
                 full_name TEXT NOT NULL,
                 role TEXT CHECK(role IN ('CITIZEN', 'ADMIN')) NOT NULL DEFAULT 'CITIZEN',
                 steg_contract_no TEXT,
+                is_verified INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0;")
+            except Exception:
+                pass
 
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS pv_profiles (
@@ -343,7 +367,6 @@ def init_db():
             except Exception:
                 pass
 
-
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS installation_tracking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,14 +382,26 @@ def init_db():
             );
             """)
 
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_tokens (
+                jti TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                purpose TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used_at TIMESTAMP DEFAULT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens(user_id);")
+
             # Ensure default demo accounts exist with correct passwords
             admin_pw = hash_password("admin123")
             citizen_pw = hash_password("citizen123")
             cursor.execute("""
-            INSERT INTO users (email, password_hash, full_name, role, steg_contract_no)
+            INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
             VALUES 
-                ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001'),
-                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN')
+                ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', 1),
+                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', 1)
             ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;
             """, (admin_pw, citizen_pw))
 

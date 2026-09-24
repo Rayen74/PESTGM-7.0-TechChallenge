@@ -183,7 +183,7 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
+          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center space-y-2">
             <p className="text-xs text-slate-400">
               Vous avez déjà un compte ?{" "}
               <Link
@@ -191,6 +191,15 @@ export default function RegisterPage() {
                 className="text-amber-400 hover:text-amber-300 font-medium underline underline-offset-4 decoration-amber-400/40"
               >
                 Se connecter
+              </Link>
+            </p>
+            <p className="text-xs text-slate-500">
+              Vous devez valider votre email ?{" "}
+              <Link
+                href="/verify-email"
+                className="text-slate-300 hover:text-amber-400 transition-colors underline underline-offset-4 decoration-slate-600"
+              >
+                Confirmer l'adresse email
               </Link>
             </p>
           </div>

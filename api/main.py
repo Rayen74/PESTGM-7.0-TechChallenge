@@ -42,9 +42,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Battery Module Router
+# Mount Battery Module Router & Auth Router
 from api.routes_battery import router as battery_router
+from api.auth import auth_router
 app.include_router(battery_router)
+app.include_router(auth_router)
+
 
 
 def get_cached_or_generate_forecast() -> pd.DataFrame:

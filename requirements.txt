@@ -22,5 +22,7 @@ plotly>=5.15
 # Database & Auth
 psycopg2-binary>=2.9
 python-jose[cryptography]>=3.3
+PyJWT>=2.8
 passlib[bcrypt]>=1.7
 python-dotenv>=1.0
+
