@@ -324,3 +324,133 @@ def verify_email(req: VerifyEmailRequest):
         "user": user,
     }
 
+
+# ---------------------------------------------------------------------------
+# Password Reset Endpoints (Port 465 SMTP_SSL & 4-min single-use JWT)
+# ---------------------------------------------------------------------------
+from api.reset_password import send_password_reset_email
+
+# Rate limiting for forgot-password: max 3 requests per 10 minutes per email/IP
+_reset_rate_limit: Dict[str, list[float]] = {}
+RESET_RATE_WINDOW_SECONDS = 600  # 10 minutes
+RESET_MAX_ATTEMPTS = 3
+
+
+def _check_rate_limit(key: str) -> bool:
+    now_ts = datetime.now(timezone.utc).timestamp()
+    timestamps = _reset_rate_limit.get(key, [])
+    # Filter only timestamps within the window
+    valid_timestamps = [ts for ts in timestamps if (now_ts - ts) < RESET_RATE_WINDOW_SECONDS]
+    if len(valid_timestamps) >= RESET_MAX_ATTEMPTS:
+        _reset_rate_limit[key] = valid_timestamps
+        return False
+    valid_timestamps.append(now_ts)
+    _reset_rate_limit[key] = valid_timestamps
+    return True
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@auth_router.post("/forgot-password")
+def forgot_password_handler(req: ForgotPasswordRequest):
+    """
+    Initiates password recovery over SMTP Port 465 (Implicit SSL/TLS per RFC 8314).
+    Issues a single-use JWT stored in the email_tokens table (4-minute expiry).
+    Enforces rate limiting (3 requests per 10 minutes).
+    Always returns the exact same generic response to prevent user enumeration.
+    """
+    email_clean = req.email.strip().lower()
+
+    # Rate limiting
+    if not _check_rate_limit(email_clean):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Trop de demandes de réinitialisation. Veuillez patienter 10 minutes avant de réessayer.",
+        )
+
+    # Generic response returned regardless of user existence
+    generic_response = {
+        "message": "If that email exists, a reset link has been sent.",
+        "status": "success",
+        "expires_in_minutes": 4,
+    }
+
+    with get_db() as conn:
+        user = query_one(conn, "SELECT id, email, full_name FROM users WHERE LOWER(email) = %s", (email_clean,))
+        if not user:
+            print(f"[AUTH FORGOT-PASSWORD] Email '{email_clean}' not found in database. Returning generic response.")
+            return generic_response
+
+        print(f"[AUTH FORGOT-PASSWORD] User found (id={user['id']}, email={user['email']}). Generating single-use 4-min token...")
+        # Issue single-use 4-minute token (stored in DB email_tokens table)
+        token = issue_token(conn, user_id=user["id"], purpose="pwd_reset")
+
+    # Construct frontend reset URL
+    frontend_base = os.getenv("FRONTEND_RESET_URL") or os.getenv("FRONTENDURL") or os.getenv("FRONTEND_URL") or "http://localhost:3000"
+    frontend_base = frontend_base.rstrip("/")
+    if not frontend_base.endswith("/reset-password") and not frontend_base.endswith("/forgot-password"):
+        reset_url = f"{frontend_base}/reset-password?token={token}"
+    else:
+        reset_url = f"{frontend_base}?token={token}"
+
+    print(f"[AUTH FORGOT-PASSWORD] Reset URL constructed: {reset_url}")
+
+    # Send email over SMTP_SSL (Port 465)
+    success, send_info = send_password_reset_email(to_email=user["email"], reset_url=reset_url, recipient_name=user.get("full_name"))
+    print(f"[AUTH FORGOT-PASSWORD] send_password_reset_email result: success={success}, info={send_info}")
+
+    return {
+        **generic_response,
+        "email_delivered": success,
+        "debug_info": send_info if not success else None,
+        "reset_url": reset_url,  # Included as developer fallback
+    }
+
+
+@auth_router.post("/reset-password")
+def reset_password_handler(req: ResetPasswordRequest):
+    """
+    Validates single-use 4-minute reset token, consumes it atomically from email_tokens,
+    and updates user's password in database.
+    """
+    if len(req.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le mot de passe doit comporter au moins 6 caractères.",
+        )
+
+    with get_db() as conn:
+        try:
+            user_id = consume_token(conn, token=req.token, purpose="pwd_reset")
+        except TokenExpired:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset link",
+            )
+        except TokenAlreadyUsed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset link",
+            )
+        except TokenInvalid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset link",
+            )
+
+        new_pw_hash = hash_password(req.new_password)
+        execute_write(conn, "UPDATE users SET password_hash = %s WHERE id = %s", (new_pw_hash, user_id))
+
+    return {
+        "status": "success",
+        "message": "Votre mot de passe a été mis à jour avec succès. Vous pouvez maintenant vous connecter.",
+    }
+
+

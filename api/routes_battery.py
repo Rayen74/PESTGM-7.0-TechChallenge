@@ -37,6 +37,10 @@ from api.auth import (
     VerifyEmailRequest,
     resend_email,
     verify_email,
+    forgot_password_handler,
+    reset_password_handler,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from api.battery_engine import (
     generate_hourly_consumption,
@@ -199,58 +203,12 @@ def me(user: Dict[str, Any] = Depends(get_current_user)):
 
 @router.post("/auth/forgot-password")
 def forgot_password(req: ForgotPasswordRequest):
-    """
-    Initiates password recovery.
-    Verifies user exists, generates a signed 1-hour reset token,
-    and returns instructions with reset token.
-    """
-    email_clean = req.email.strip().lower()
-    with get_db() as conn:
-        user = query_one(conn, "SELECT id, email, full_name FROM users WHERE LOWER(email) = %s", (email_clean,))
-    
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Aucun compte n'est associé à cette adresse email. Veuillez vérifier votre saisie ou créer un compte."
-        )
-
-    reset_token = create_password_reset_token(user["email"])
-    frontend_base = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    reset_url = f"{frontend_base}/forgot-password?token={reset_token}"
-    return {
-        "status": "success",
-        "message": "Un lien de réinitialisation a été généré avec succès (valable 1 heure).",
-        "reset_token": reset_token,
-        "reset_url": reset_url,
-        "email": user["email"],
-    }
-
+    return forgot_password_handler(req)
 
 
 @router.post("/auth/reset-password")
 def reset_password(req: ResetPasswordRequest):
-    """
-    Validates the password recovery token and updates the user's password in Neon Postgres / DB.
-    """
-    if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit comporter au moins 6 caractères.")
-
-    email = verify_password_reset_token(req.token)
-    if not email:
-        raise HTTPException(status_code=400, detail="Le lien ou jeton de réinitialisation est invalide ou a expiré.")
-
-    new_pw_hash = hash_password(req.new_password)
-    with get_db() as conn:
-        execute_write(
-            conn,
-            "UPDATE users SET password_hash = %s WHERE email = %s",
-            (new_pw_hash, email)
-        )
-
-    return {
-        "status": "success",
-        "message": "Votre mot de passe a été mis à jour avec succès. Vous pouvez maintenant vous connecter."
-    }
+    return reset_password_handler(req)
 
 
 @router.post("/auth/resend-email")

@@ -3,102 +3,52 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { requestPasswordReset, resetPassword } from "@/lib/api";
+import { requestPasswordReset } from "@/lib/api";
 import {
   Sun,
   ArrowRight,
-  KeyRound,
-  CheckCircle2,
   ArrowLeft,
-  AlertCircle,
-  ExternalLink,
-  Copy,
   Mail,
+  CheckCircle2,
+  Clock,
+  ShieldCheck,
 } from "lucide-react";
 
 function ForgotPasswordContent() {
   const searchParams = useSearchParams();
-
-  // "request" (entering email) | "sent" (link generated) | "reset" (setting new password)
-  const [step, setStep] = useState<"request" | "sent" | "reset">("request");
   const [email, setEmail] = useState("");
-  const [resetToken, setResetToken] = useState("");
-  const [resetUrl, setResetUrl] = useState<string>("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [emailDelivered, setEmailDelivered] = useState<boolean | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
+  const [fallbackResetUrl, setFallbackResetUrl] = useState<string | null>(null);
 
-  // If a valid ?token= is provided in the URL query string, directly open the reset form
+  // If redirected with ?token=, redirect to /reset-password
   useEffect(() => {
-    const tokenFromUrl = searchParams.get("token");
-    if (tokenFromUrl && tokenFromUrl !== "undefined" && tokenFromUrl !== "null" && tokenFromUrl.trim().length > 10) {
-      setResetToken(tokenFromUrl);
-      setStep("reset");
+    const token = searchParams.get("token");
+    if (token) {
+      window.location.href = `/reset-password?token=${encodeURIComponent(token)}`;
     }
   }, [searchParams]);
 
-  const handleRequestToken = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    setEmailDelivered(null);
+    setDebugInfo(null);
+    setFallbackResetUrl(null);
     try {
       const res = await requestPasswordReset(email.trim().toLowerCase());
-      const rawToken = res.reset_token;
-
-      if (!rawToken || rawToken === "undefined") {
-        throw new Error("Impossible de générer le jeton de sécurité pour cet utilisateur.");
+      setSubmitted(true);
+      if (res) {
+        setEmailDelivered((res as any).email_delivered ?? null);
+        setDebugInfo((res as any).debug_info ?? null);
+        setFallbackResetUrl((res as any).reset_url ?? null);
       }
-
-      const generatedUrl =
-        res.reset_url && !res.reset_url.includes("token=undefined")
-          ? res.reset_url
-          : `${window.location.origin}/forgot-password?token=${rawToken}`;
-
-      setResetToken(rawToken);
-      setResetUrl(generatedUrl);
-      setStep("sent");
     } catch (err: any) {
-      setError(err.message || "Échec de l'envoi de la demande de réinitialisation.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCopyLink = () => {
-    if (!resetUrl) return;
-    navigator.clipboard.writeText(resetUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!resetToken) {
-      setError("Aucun jeton de réinitialisation valide détecté. Veuillez réouvrir le lien envoyé.");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError("Le nouveau mot de passe doit contenir au moins 6 caractères.");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("Les mots de passe ne correspondent pas.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await resetPassword(resetToken, newPassword);
-      setPasswordResetSuccess(true);
-    } catch (err: any) {
-      setError(err.message || "Le lien ou jeton de réinitialisation est invalide ou a expiré.");
+      setError(err.message || "Une erreur est survenue lors de l'envoi de la demande.");
     } finally {
       setLoading(false);
     }
@@ -127,66 +77,93 @@ function ForgotPasswordContent() {
             Récupération de Compte
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            STEG Solar Platform • Réinitialisation par lien sécurisé
+            STEG Solar Platform • Réinitialisation par email sécurisé (Port 465)
           </p>
         </div>
 
         {/* Main Card */}
         <div className="rounded-2xl border border-slate-700/60 bg-slate-900/70 backdrop-blur-xl p-8 shadow-2xl shadow-black/40">
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-100">
-                {passwordResetSuccess
-                  ? "Mot de passe mis à jour !"
-                  : step === "request"
-                  ? "Mot de passe oublié"
-                  : step === "sent"
-                  ? "Lien de réinitialisation généré"
-                  : "Nouveau mot de passe"}
-              </h2>
+              <h2 className="text-lg font-semibold text-slate-100">Mot de passe oublié</h2>
               <p className="text-xs text-slate-500">
-                {passwordResetSuccess
-                  ? "Votre mot de passe a été modifié avec succès."
-                  : step === "request"
-                  ? "Entrez votre email pour obtenir un lien de récupération"
-                  : step === "sent"
-                  ? "Cliquez sur le lien ci-dessous pour changer votre mot de passe"
-                  : "Définissez votre nouveau mot de passe sécurisé"}
+                {submitted
+                  ? "Vérifiez votre boîte de réception"
+                  : "Indiquez l'adresse email liée à votre compte"}
               </p>
             </div>
-            <KeyRound className="w-5 h-5 text-amber-400/80" />
+            <ShieldCheck className="w-5 h-5 text-amber-400/80" />
           </div>
 
           {error && (
-            <div className="mb-4 px-3.5 py-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="mb-4 px-3.5 py-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
+              {error}
             </div>
           )}
 
-          {/* STEP: SUCCESS FINAL */}
-          {passwordResetSuccess ? (
+          {submitted ? (
+            /* Generic message confirmation to prevent account enumeration */
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="text-xs space-y-1">
-                  <p className="font-semibold text-emerald-200">Mot de passe réinitialisé</p>
-                  <p className="text-emerald-400/80">
-                    Vous pouvez dès maintenant vous connecter à votre espace avec vos nouveaux identifiants.
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-start gap-3">
+                <Mail className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-1.5 leading-relaxed">
+                  <p className="font-semibold text-amber-200">
+                    If that email exists, a reset link has been sent.
                   </p>
+                  <p className="text-amber-400/80">
+                    Si l'adresse correspond à un compte actif, un lien de réinitialisation sécurisé à usage unique vous a été expédié par email (connexion chiffrée SSL/TLS port 465).
+                  </p>
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-300/70 pt-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Validité du lien : <strong>4 minutes</strong></span>
+                  </div>
                 </div>
               </div>
-              <Link
-                href="/login"
-                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 text-sm"
+
+              {/* If email server failed (e.g. Gmail App Password required), display notice and direct fallback button */}
+              {emailDelivered === false && (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2.5">
+                  <div className="flex items-center gap-2 font-semibold text-amber-300">
+                    <span>⚠️ Avis de délivrabilité SMTP</span>
+                  </div>
+                  <p className="text-[12px] text-slate-300 leading-relaxed">
+                    Le serveur SMTP Google nécessite un <strong>Mot de passe d'application</strong> (App Password à 16 lettres) pour autoriser les envois port 465.
+                  </p>
+                  {fallbackResetUrl && (
+                    <div className="pt-1">
+                      <a
+                        href={fallbackResetUrl}
+                        className="w-full py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg flex items-center justify-center gap-1.5 text-xs transition-all shadow-md shadow-amber-500/20"
+                      >
+                        <span>Ouvrir directement le lien de réinitialisation sécurisé</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
+                  {debugInfo && (
+                    <p className="text-[10px] font-mono text-slate-500 break-all pt-1">
+                      Détail : {debugInfo}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmitted(false);
+                  setEmail("");
+                  setEmailDelivered(null);
+                  setDebugInfo(null);
+                  setFallbackResetUrl(null);
+                }}
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors"
               >
-                <span>Accéder à la connexion</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+                Envoyer un nouveau lien avec une autre adresse
+              </button>
             </div>
-          ) : step === "request" ? (
-            /* STEP 1: Enter email */
-            <form onSubmit={handleRequestToken} className="space-y-4">
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1.5" htmlFor="forgot-email">
                   Adresse email du compte
@@ -202,98 +179,18 @@ function ForgotPasswordContent() {
                 />
               </div>
 
+              <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Limite de sécurité : 3 demandes max / 10 minutes</span>
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
               >
-                {loading ? "Génération en cours…" : "Générer le lien de réinitialisation"}
+                {loading ? "Envoi en cours…" : "Envoyer le lien de réinitialisation"}
                 {!loading && <ArrowRight className="w-4 h-4" />}
-              </button>
-            </form>
-          ) : step === "sent" ? (
-            /* STEP 2: Display Generated Reset URL with direct click & copy */
-            <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-3">
-                <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold">
-                  <Mail className="w-4 h-4" />
-                  <span>Lien de réinitialisation prêt (valable 1 heure) :</span>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 break-all font-mono text-[11px] text-amber-200/90 leading-relaxed select-all">
-                  {resetUrl}
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="flex-1 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{copied ? "Lien copié !" : "Copier le lien"}</span>
-                  </button>
-
-                  <a
-                    href={resetUrl}
-                    className="flex-1 py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <span>Ouvrir le lien</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
-
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStep("reset")}
-                  className="text-xs text-amber-400/90 hover:text-amber-300 underline underline-offset-4 decoration-amber-500/30 transition-colors"
-                >
-                  Ou continuer directement sur cette page →
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* STEP 3: Enter new password with token automatically attached (No JWT field) */
-            <form onSubmit={handleResetPassword} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5" htmlFor="new-password">
-                  Nouveau mot de passe
-                </label>
-                <input
-                  id="new-password"
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimum 6 caractères"
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-100 placeholder-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5" htmlFor="confirm-new-password">
-                  Confirmer le mot de passe
-                </label>
-                <input
-                  id="confirm-new-password"
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-100 placeholder-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? "Mise à jour en cours…" : "Confirmer le nouveau mot de passe"}
-                {!loading && <CheckCircle2 className="w-4 h-4" />}
               </button>
             </form>
           )}
@@ -308,18 +205,12 @@ function ForgotPasswordContent() {
               Retour à la connexion
             </Link>
 
-            {(step === "sent" || step === "reset") && !passwordResetSuccess && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("request");
-                  setError(null);
-                }}
-                className="text-amber-400 hover:text-amber-300 transition-colors"
-              >
-                Recommencer avec un autre email
-              </button>
-            )}
+            <Link
+              href="/login"
+              className="text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              Se connecter
+            </Link>
           </div>
         </div>
       </div>

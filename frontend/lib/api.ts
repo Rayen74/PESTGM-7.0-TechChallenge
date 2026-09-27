@@ -175,7 +175,7 @@ export async function registerUser(data: {
 }
 
 export async function requestPasswordReset(email: string): Promise<{ status: string; message: string; reset_token?: string; reset_url?: string; email?: string }> {
-  const res = await fetch(`${API_BASE}/api/battery/auth/forgot-password`, {
+  const res = await fetch(`${API_BASE}/auth/forgot-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -188,14 +188,14 @@ export async function requestPasswordReset(email: string): Promise<{ status: str
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<{ status: string; message: string }> {
-  const res = await fetch(`${API_BASE}/api/battery/auth/reset-password`, {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Échec de la réinitialisation du mot de passe");
+    throw new Error(err.detail || "Invalid or expired reset link");
   }
   return res.json();
 }

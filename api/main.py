@@ -48,6 +48,13 @@ from api.auth import auth_router
 app.include_router(battery_router)
 app.include_router(auth_router)
 
+# Initialize database schema and seeds
+from api.database import init_db
+try:
+    init_db()
+except Exception as e:
+    print(f"[Database] Warning: init_db failed on startup: {e}")
+
 
 
 def get_cached_or_generate_forecast() -> pd.DataFrame:

@@ -26,8 +26,8 @@ except ImportError:
 
 from api.database import execute_write, query_one
 
-# JWT Secret: dedicated EMAIL_JWT_SECRET with fallback to STEG_JWT_SECRET
-EMAIL_JWT_SECRET = os.getenv("EMAIL_JWT_SECRET") or os.getenv("STEG_JWT_SECRET", "steg-email-token-secret-fallback-key-2026")
+# JWT Secret: dedicated EMAIL_JWT_SECRET with fallback to JWT_SECRET and STEG_JWT_SECRET
+EMAIL_JWT_SECRET = os.getenv("EMAIL_JWT_SECRET") or os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET", "steg-email-token-secret-fallback-key-2026")
 JWT_ALGORITHM = "HS256"
 TOKEN_EXPIRY_MINUTES = 4
 

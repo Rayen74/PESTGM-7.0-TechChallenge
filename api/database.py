@@ -274,9 +274,10 @@ def init_db():
                 INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
                 VALUES 
                     ('admin@example.com', %s, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', TRUE),
-                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', TRUE)
+                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', TRUE),
+                    ('rayenchaaben0704@gmail.com', %s, 'Rayen Chaaben', 'CITIZEN', 'POL-784920-RAY', TRUE)
                 ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
-                """, (admin_pw, citizen_pw))
+                """, (admin_pw, citizen_pw, citizen_pw))
 
                 # Seed battery catalog if empty
                 cursor.execute("SELECT COUNT(*) FROM battery_catalog;")
@@ -401,9 +402,10 @@ def init_db():
             INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
             VALUES 
                 ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', 1),
-                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', 1)
+                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', 1),
+                ('rayenchaaben0704@gmail.com', ?, 'Rayen Chaaben', 'CITIZEN', 'POL-784920-RAY', 1)
             ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;
-            """, (admin_pw, citizen_pw))
+            """, (admin_pw, citizen_pw, citizen_pw))
 
             cursor.execute("SELECT COUNT(*) as cnt FROM battery_catalog;")
             if cursor.fetchone()["cnt"] == 0:

@@ -25,8 +25,8 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // If already authenticated and accessing login, register, or forgot-password, redirect to portal
-  if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password') {
+  // If already authenticated and accessing login, register, forgot-password, or reset-password, redirect to portal
+  if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password' || pathname === '/reset-password') {
     if (token) {
       if (role === 'ADMIN') {
         return NextResponse.redirect(new URL('/admin', request.url));
@@ -40,5 +40,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/citizen/:path*', '/login', '/register', '/forgot-password'],
+  matcher: ['/admin/:path*', '/citizen/:path*', '/login', '/register', '/forgot-password', '/reset-password'],
 };
