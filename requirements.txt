@@ -24,5 +24,10 @@ psycopg2-binary>=2.9
 python-jose[cryptography]>=3.3
 PyJWT>=2.8
 passlib[bcrypt]>=1.7
+bcrypt==4.0.1
 python-dotenv>=1.0
 
+# API
+fastapi>=0.100
+uvicorn[standard]>=0.23
+pydantic[email]>=2.0

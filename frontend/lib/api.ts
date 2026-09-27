@@ -19,10 +19,10 @@ import {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // Helper to get auth header from localStorage
-function getAuthHeader(): Record<string, string> {
+export function getAuthHeader(): Record<string, string> {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("steg_solar_token");
-    if (token) {
+    if (token && token !== "undefined" && token !== "null" && token.trim() !== "") {
       return { Authorization: `Bearer ${token}` };
     }
   }
@@ -249,7 +249,9 @@ export async function fetchPVProfile(): Promise<PVProfile> {
   const res = await fetch(`${API_BASE}/api/battery/profile`, {
     headers: { ...getAuthHeader() },
   });
-  if (!res.ok) throw new Error("Échec du chargement du profil PV");
+  if (!res.ok) {
+    throw new Error(`Échec du chargement du profil PV (${res.status})`);
+  }
   return res.json();
 }
 
@@ -338,7 +340,9 @@ export async function fetchMyRequests(): Promise<BatteryRequestItem[]> {
   const res = await fetch(`${API_BASE}/api/battery/requests/my`, {
     headers: { ...getAuthHeader() },
   });
-  if (!res.ok) throw new Error("Échec du chargement de vos demandes");
+  if (!res.ok) {
+    throw new Error(`Échec du chargement de vos demandes (${res.status})`);
+  }
   return res.json();
 }
 

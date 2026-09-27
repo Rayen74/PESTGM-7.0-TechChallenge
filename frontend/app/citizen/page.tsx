@@ -61,7 +61,12 @@ export default function CitizenDashboard() {
   // ---------- Auth ----------
   useEffect(() => {
     const s = getSession();
-    if (!s || s.role !== "CITIZEN") {
+    const token = typeof window !== "undefined" ? localStorage.getItem("steg_solar_token") : null;
+    if (!s || s.role !== "CITIZEN" || !token) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("session");
+        localStorage.removeItem("steg_solar_token");
+      }
       router.replace("/login");
     } else {
       setSess(s);
@@ -73,7 +78,12 @@ export default function CitizenDashboard() {
             await savePVProfile(profileData);
           }
           setProfileReady(true);
-        } catch {
+        } catch (err: any) {
+          if (err?.message?.includes("401") || err?.message?.includes("Non authentifié")) {
+            logout();
+            router.replace("/login");
+            return;
+          }
           setProfileReady(true);
         }
       })();
@@ -106,39 +116,53 @@ export default function CitizenDashboard() {
     try {
       const data = await fetchMyRequests();
       setMyRequests(data);
-    } catch {
+    } catch (err: any) {
+      if (err?.message?.includes("401") || err?.message?.includes("Non authentifié")) {
+        logout();
+        router.replace("/login");
+        return;
+      }
       setMyRequests([]);
     } finally {
       setLoadingRequests(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
+    if (!sess) return;
     if (activeTab === "catalog") loadCatalog();
     if (activeTab === "requests") loadRequests();
-  }, [activeTab, loadCatalog, loadRequests]);
+  }, [activeTab, sess, loadCatalog, loadRequests]);
 
   // ---------- AI Recommendation State ----------
   const [aiRecommendation, setAiRecommendation] = useState<AgentRecommendation | null>(null);
   const [loadingRecommendation, setLoadingRecommendation] = useState(false);
+  const [aiRecError, setAiRecError] = useState(false);
 
   const loadAiRecommendation = useCallback(async () => {
     setLoadingRecommendation(true);
+    setAiRecError(false);
     try {
       const rec = await getAgentRecommendation([]);
       setAiRecommendation(rec);
-    } catch {
+    } catch (err: any) {
+      if (err?.message?.includes("401") || err?.message?.includes("Non authentifié")) {
+        logout();
+        router.replace("/login");
+        return;
+      }
       setAiRecommendation(null);
+      setAiRecError(true);
     } finally {
       setLoadingRecommendation(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    if (activeTab === "catalog" && !aiRecommendation && !loadingRecommendation) {
+    if (activeTab === "catalog" && !aiRecommendation && !loadingRecommendation && !aiRecError && sess) {
       loadAiRecommendation();
     }
-  }, [activeTab, aiRecommendation, loadingRecommendation, loadAiRecommendation]);
+  }, [activeTab, aiRecommendation, loadingRecommendation, aiRecError, sess, loadAiRecommendation]);
 
   // ---------- Appliance Modal State ----------
   const [selectedBattery, setSelectedBattery] = useState<BatteryItem | null>(null);
@@ -203,7 +227,7 @@ export default function CitizenDashboard() {
           }
         } catch { /* proceed anyway */ }
       }
-      
+
       // Clean appliances
       const validAppliances = appliances
         .filter((a) => a.name.trim() !== "" && a.consumption_w > 0)
@@ -309,11 +333,10 @@ export default function CitizenDashboard() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === tab.key
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === tab.key
                   ? "border-emerald-400 text-emerald-400 bg-emerald-500/5"
                   : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/30"
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
@@ -691,13 +714,12 @@ export default function CitizenDashboard() {
                                 return (
                                   <div key={st.key} className="flex flex-col items-center text-center">
                                     <div
-                                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                                        isCurrent
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${isCurrent
                                           ? "bg-emerald-500 text-slate-950 ring-4 ring-emerald-500/20"
                                           : isPassed
-                                          ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
-                                          : "bg-slate-800/60 border border-slate-700 text-slate-600"
-                                      }`}
+                                            ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
+                                            : "bg-slate-800/60 border border-slate-700 text-slate-600"
+                                        }`}
                                     >
                                       {isPassed ? (
                                         <Check className="w-3.5 h-3.5" />
@@ -706,13 +728,12 @@ export default function CitizenDashboard() {
                                       )}
                                     </div>
                                     <span
-                                      className={`text-[10px] mt-1 font-medium leading-tight ${
-                                        isCurrent
+                                      className={`text-[10px] mt-1 font-medium leading-tight ${isCurrent
                                           ? "text-emerald-300 font-semibold"
                                           : isPassed
-                                          ? "text-slate-300"
-                                          : "text-slate-600"
-                                      }`}
+                                            ? "text-slate-300"
+                                            : "text-slate-600"
+                                        }`}
                                     >
                                       {st.label}
                                     </span>

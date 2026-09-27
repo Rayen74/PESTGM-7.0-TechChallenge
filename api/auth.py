@@ -21,7 +21,7 @@ try:
 except ImportError:
     pass
 
-SECRET_KEY = os.getenv("STEG_JWT_SECRET", "tunisia-solar-steg-super-secret-key-production-grade")
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET") or "tunisia-solar-steg-super-secret-key-production-grade"
 ALGORITHM = "HS256"
 security = HTTPBearer(auto_error=False)
 
@@ -107,42 +107,50 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
-    if HAS_JOSE:
+    # Try decoding with SECRET_KEY and default fallback key for backward compatibility
+    keys_to_try = [SECRET_KEY]
+    fallback_key = "tunisia-solar-steg-super-secret-key-production-grade"
+    if fallback_key not in keys_to_try:
+        keys_to_try.append(fallback_key)
+
+    for key in keys_to_try:
+        if HAS_JOSE:
+            try:
+                payload = jwt.decode(token, key, algorithms=[ALGORITHM])
+                return payload
+            except Exception:
+                pass
+
+        # Fallback decoder
+        import json
+        import hmac
+        import hashlib
+        import base64
+
+        def b64url_decode(d: str) -> bytes:
+            rem = len(d) % 4
+            if rem > 0:
+                d += '=' * (4 - rem)
+            return base64.urlsafe_b64decode(d.encode('utf-8'))
+
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            parts = token.split('.')
+            if len(parts) != 3:
+                continue
+            enc_h, enc_p, enc_s = parts
+            signing_input = f"{enc_h}.{enc_p}".encode('utf-8')
+            sig = hmac.new(key.encode('utf-8'), signing_input, hashlib.sha256).digest()
+            expected_sig = base64.urlsafe_b64encode(sig).decode('utf-8').rstrip('=')
+            if not hmac.compare_digest(enc_s, expected_sig):
+                continue
+
+            payload = json.loads(b64url_decode(enc_p).decode('utf-8'))
+            if "exp" in payload and payload["exp"] < datetime.now(timezone.utc).timestamp():
+                continue
             return payload
         except Exception:
-            return None
-
-    # Fallback decoder
-    import json
-    import hmac
-    import hashlib
-    import base64
-
-    def b64url_decode(d: str) -> bytes:
-        rem = len(d) % 4
-        if rem > 0:
-            d += '=' * (4 - rem)
-        return base64.urlsafe_b64decode(d.encode('utf-8'))
-
-    try:
-        parts = token.split('.')
-        if len(parts) != 3:
-            return None
-        enc_h, enc_p, enc_s = parts
-        signing_input = f"{enc_h}.{enc_p}".encode('utf-8')
-        sig = hmac.new(SECRET_KEY.encode('utf-8'), signing_input, hashlib.sha256).digest()
-        expected_sig = base64.urlsafe_b64encode(sig).decode('utf-8').rstrip('=')
-        if not hmac.compare_digest(enc_s, expected_sig):
-            return None
-
-        payload = json.loads(b64url_decode(enc_p).decode('utf-8'))
-        if "exp" in payload and payload["exp"] < datetime.now(timezone.utc).timestamp():
-            return None
-        return payload
-    except Exception:
-        return None
+            continue
+    return None
 
 
 def create_password_reset_token(email: str) -> str:
@@ -165,19 +173,30 @@ from api.database import get_db, query_one
 
 
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
-    if not credentials:
+    if not credentials or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token manquant")
     payload = decode_access_token(credentials.credentials)
     if not payload or "sub" not in payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide ou expiré")
 
-    user_id = payload.get("sub")
+    raw_user_id = payload.get("sub")
+    try:
+        user_id = int(raw_user_id)
+    except (ValueError, TypeError):
+        user_id = raw_user_id
+
     with get_db() as conn:
         user = query_one(
             conn,
             "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE id = %s",
             (user_id,)
         )
+        if not user and isinstance(raw_user_id, str):
+            user = query_one(
+                conn,
+                "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE LOWER(email) = %s",
+                (raw_user_id.lower(),)
+            )
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur non trouvé")
         return user
