@@ -1,263 +1,64 @@
 "use client";
 
-import React from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Area,
-  Line,
-  BarChart,
-  Bar,
-  AreaChart,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-} from "recharts";
+import React, { useMemo, useState } from "react";
+import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { TimeSeriesItem } from "@/lib/types";
 
-interface ForecastTabProps {
-  timeseries: TimeSeriesItem[];
-  displayUnit: string;
-  ciLevel: number;
-  entityLabel: string;
-}
+interface ForecastTabProps { timeseries: TimeSeriesItem[]; displayUnit: string; ciLevel: number; entityLabel: string; }
 
-export const ForecastTab: React.FC<ForecastTabProps> = ({
-  timeseries,
-  displayUnit,
-  ciLevel,
-  entityLabel,
-}) => {
-  // Format times for display: "DD/MM HH:mm"
-  const formattedData = timeseries.map((item) => {
-    const d = new Date(item.time);
-    const timeFormatted = `${d.getUTCDate().toString().padStart(2, "0")}/${(d.getUTCMonth() + 1)
-      .toString()
-      .padStart(2, "0")} ${d.getUTCHours().toString().padStart(2, "0")}:00`;
+const formatTime = (value: string) => {
+  const date = new Date(value);
+  return `${date.getUTCDate().toString().padStart(2, "0")}/${(date.getUTCMonth() + 1).toString().padStart(2, "0")} ${date.getUTCHours().toString().padStart(2, "0")}:00`;
+};
 
-    // To create shaded band in Recharts:
-    // base = power_lower_bound
-    // diff = power_upper_bound - power_lower_bound (stacked on top)
-    const lower = Math.max(0, item.power_lower_bound);
-    const upper = Math.max(lower, item.power_upper_bound);
-    const bandSpan = Math.max(0, upper - lower);
+export const ForecastTab: React.FC<ForecastTabProps> = ({ timeseries, displayUnit, ciLevel, entityLabel }) => {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selected = timeseries[Math.min(selectedIndex, Math.max(timeseries.length - 1, 0))];
+  const selectedTime = selected ? formatTime(selected.time) : "";
+  const lower = selected ? Math.max(0, selected.power_lower_bound) : 0;
+  const expected = selected ? Math.max(lower, selected.power_forecast) : 0;
+  const upper = selected ? Math.max(expected, selected.power_upper_bound) : 0;
+  const span = Math.max(upper - lower, 1);
+  const marker = Math.min(100, Math.max(0, ((expected - lower) / span) * 100));
+  const certainty = selected?.certitude_pct ?? 0;
+  const certaintyColor = certainty > 80 ? "emerald" : certainty >= 50 ? "amber" : "red";
+  const certaintyStyles = certainty > 80 ? { card: "border-emerald-500/40", value: "text-emerald-400", fill: "bg-emerald-400/40", marker: "bg-emerald-300" } : certainty >= 50 ? { card: "border-amber-500/40", value: "text-amber-400", fill: "bg-amber-400/40", marker: "bg-amber-300" } : { card: "border-red-500/40", value: "text-red-400", fill: "bg-red-400/40", marker: "bg-red-300" };
+  const certaintyWord = certainty > 80 ? "Very likely" : certainty >= 50 ? "Likely" : "Less certain";
 
-    return {
-      ...item,
-      timeFormatted,
-      lower,
-      bandSpan,
-    };
-  });
+  const chartData = useMemo(() => timeseries.map((item) => ({
+    ...item,
+    timeFormatted: formatTime(item.time),
+    lower: Math.max(0, item.power_lower_bound),
+    bandSpan: Math.max(0, item.power_upper_bound - item.power_lower_bound),
+  })), [timeseries]);
 
-  return (
-    <div className="space-y-6">
-      {/* Main Load Curve Chart */}
-      <div className="glass-panel p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-2">
-          <div>
-            <h3 className="text-base font-bold text-slate-100">
-              Courbe de Charge Prédictive avec Intervalle de Confiance ({entityLabel})
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Production photovoltaïque attendue (P) et fuseau de couverture opérationnel à {ciLevel}%.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-slate-300">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-amber-400 inline-block rounded"></span>
-              Prévision Attendue (P)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-2 bg-amber-500/25 inline-block rounded border border-amber-500/50"></span>
-              Intervalle ({ciLevel}%)
-            </span>
-          </div>
-        </div>
+  return <div className="space-y-6">
+    <div><h2 className="text-2xl font-bold text-white">Your solar forecast</h2><p className="mt-2 text-base text-slate-400">See expected production and the range it is most likely to fall within for {entityLabel}.</p></div>
 
-        <div className="h-[440px] w-full pt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={formattedData} margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
-              <defs>
-                <linearGradient id="bandGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.08} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis
-                dataKey="timeFormatted"
-                stroke="#64748b"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                angle={-30}
-                textAnchor="end"
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                stroke="#64748b"
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-                label={{
-                  value: `Puissance Électrique (${displayUnit})`,
-                  angle: -90,
-                  position: "insideLeft",
-                  fill: "#94a3b8",
-                  fontSize: 12,
-                }}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload as typeof formattedData[0];
-                    return (
-                      <div className="glass-panel p-3 shadow-xl border border-slate-700 text-xs space-y-1.5 min-w-[200px]">
-                        <p className="font-bold text-slate-200 border-b border-slate-700/80 pb-1">
-                          📅 {data.timeFormatted} (UTC)
-                        </p>
-                        <p className="text-amber-300 font-semibold flex justify-between">
-                          <span>Prévision P :</span>
-                          <span>
-                            {data.power_forecast.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} {displayUnit}
-                          </span>
-                        </p>
-                        <p className="text-slate-400 flex justify-between">
-                          <span>Intervalle :</span>
-                          <span className="font-mono text-slate-300">
-                            [{data.power_lower_bound.toFixed(2)}, {data.power_upper_bound.toFixed(2)}] {displayUnit}
-                          </span>
-                        </p>
-                        <p className="text-sky-300 flex justify-between">
-                          <span>Certitude :</span>
-                          <span>{data.certitude_pct.toFixed(1)}%</span>
-                        </p>
-                        <p className="text-orange-300 flex justify-between">
-                          <span>Irradiance G(i) :</span>
-                          <span>{Math.round(data.gi)} W/m²</span>
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              {/* Invisible lower base for stacking */}
-              <Area type="monotone" dataKey="lower" stackId="ci" stroke="none" fill="transparent" />
-              {/* Shaded confidence interval band */}
-              <Area
-                type="monotone"
-                dataKey="bandSpan"
-                stackId="ci"
-                stroke="none"
-                fill="url(#bandGradient)"
-                name={`Intervalle (${ciLevel}%)`}
-              />
-              {/* Point Forecast Line */}
-              <Line
-                type="monotone"
-                dataKey="power_forecast"
-                stroke="#f59e0b"
-                strokeWidth={2.8}
-                dot={{ r: 2, fill: "#f59e0b" }}
-                activeDot={{ r: 5, fill: "#fef3c7" }}
-                name="Prévision (P)"
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5">
+        <div><h3 className="text-lg font-semibold text-white">Expected production over time</h3><p className="text-sm text-slate-400 mt-1">The shaded area shows the likely range.</p></div>
+        <div className="flex items-center gap-2"><label htmlFor="forecast-hour" className="text-sm text-slate-400">Choose a time</label><select id="forecast-hour" value={selectedIndex} onChange={(e) => setSelectedIndex(Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200">{timeseries.map((item, index) => <option key={`${item.time}-${index}`} value={index}>{formatTime(item.time)}</option>)}</select></div>
       </div>
-
-      {/* Uncertainty Analysis & Diurnal Profiles (2 Columns) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Column 1: Certitude % Bar Chart */}
-        <div className="glass-panel p-5">
-          <div className="pb-3 border-b border-slate-800">
-            <h4 className="text-sm font-bold text-slate-200">Indice de Certitude Opérationnel (%)</h4>
-            <p className="text-[11px] text-slate-400">Degré de fiabilité météorologique heure par heure.</p>
-          </div>
-          <div className="h-[260px] w-full pt-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={formattedData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis
-                  dataKey="timeFormatted"
-                  stroke="#64748b"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  angle={-30}
-                  textAnchor="end"
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  stroke="#64748b"
-                  domain={[50, 100]}
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  label={{ value: "%", angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 10 }}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const d = payload[0].payload as typeof formattedData[0];
-                      return (
-                        <div className="glass-panel p-2 text-xs border border-slate-700 shadow-md">
-                          <p className="text-slate-300 font-semibold">{d.timeFormatted}</p>
-                          <p className="text-emerald-400 font-bold">Certitude : {d.certitude_pct.toFixed(1)}%</p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="certitude_pct" fill="#10b981" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Column 2: Plane of Array Irradiance G(i) */}
-        <div className="glass-panel p-5">
-          <div className="pb-3 border-b border-slate-800">
-            <h4 className="text-sm font-bold text-slate-200">Irradiance Globale Inclinée G(i) (W/m²)</h4>
-            <p className="text-[11px] text-slate-400">Irradiance effective transposée sur plan 30° Sud.</p>
-          </div>
-          <div className="h-[260px] w-full pt-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
-                <defs>
-                  <linearGradient id="giGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis
-                  dataKey="timeFormatted"
-                  stroke="#64748b"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  angle={-30}
-                  textAnchor="end"
-                  interval="preserveStartEnd"
-                />
-                <YAxis stroke="#64748b" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const d = payload[0].payload as typeof formattedData[0];
-                      return (
-                        <div className="glass-panel p-2 text-xs border border-slate-700 shadow-md">
-                          <p className="text-slate-300 font-semibold">{d.timeFormatted}</p>
-                          <p className="text-sky-300 font-bold">G(i) : {Math.round(d.gi)} W/m²</p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Area type="monotone" dataKey="gi" stroke="#38bdf8" strokeWidth={2} fill="url(#giGradient)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      <div className="h-[390px] w-full">
+        <ResponsiveContainer width="100%" height="100%"><ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 5, bottom: 25 }}>
+          <defs><linearGradient id="forecastRange" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f59e0b" stopOpacity={0.28} /><stop offset="100%" stopColor="#f59e0b" stopOpacity={0.06} /></linearGradient></defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="timeFormatted" stroke="#64748b" tick={{ fontSize: 11, fill: "#94a3b8" }} angle={-30} textAnchor="end" interval="preserveStartEnd" />
+          <YAxis stroke="#64748b" tick={{ fontSize: 11, fill: "#94a3b8" }} unit={` ${displayUnit}`} />
+          <Tooltip content={({ active, payload }) => { if (!active || !payload?.length) return null; const item = payload[0].payload as typeof chartData[number]; return <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm shadow-xl"><p className="font-semibold text-white mb-2">{item.timeFormatted}</p><p className="text-amber-300">Expected: {item.power_forecast.toFixed(1)} {displayUnit}</p><p className="text-slate-300">Likely range: {item.power_lower_bound.toFixed(1)}?{item.power_upper_bound.toFixed(1)} {displayUnit}</p><p className="text-slate-400">Certainty: {item.certitude_pct.toFixed(0)}%</p></div>; }} />
+          <Area type="monotone" dataKey="lower" stackId="range" stroke="none" fill="transparent" /><Area type="monotone" dataKey="bandSpan" stackId="range" stroke="none" fill="url(#forecastRange)" />
+          <Line type="monotone" dataKey="power_forecast" stroke="#f59e0b" strokeWidth={3} dot={{ r: 2, fill: "#f59e0b" }} activeDot={{ r: 5, fill: "#fef3c7" }} />
+        </ComposedChart></ResponsiveContainer>
       </div>
     </div>
-  );
+
+    {selected && <div className={`rounded-2xl border ${certaintyStyles.card} bg-slate-900/80 p-6`}>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4"><div><h3 className="text-lg font-semibold text-white">How sure we are</h3><p className="mt-1 text-sm text-slate-400">For {selectedTime}, in {entityLabel}.</p></div><div className={`text-4xl font-bold ${certaintyStyles.value}`}>{certainty.toFixed(0)}%</div></div>
+      <div className="mt-7 px-1"><div className="relative h-3 rounded-full bg-slate-700"><div className={`absolute inset-y-0 left-0 rounded-full ${certaintyStyles.fill}`} style={{ width: `${Math.max(marker, 12)}%` }} /><span className={`absolute top-1/2 h-6 w-1 -translate-y-1/2 rounded-full ${certaintyStyles.marker}`} style={{ left: `calc(${marker}% - 2px)` }} /></div><div className="relative mt-3 flex justify-between text-sm"><span><span className="block text-slate-500">Lower</span><span className="font-semibold text-white">{lower.toFixed(1)} {displayUnit}</span></span><span className="text-center"><span className="block text-slate-500">Expected</span><span className="font-semibold text-white">{expected.toFixed(1)} {displayUnit}</span></span><span className="text-right"><span className="block text-slate-500">Upper</span><span className="font-semibold text-white">{upper.toFixed(1)} {displayUnit}</span></span></div></div>
+      <p className="mt-6 text-base text-slate-200">{certaintyWord} between {lower.toFixed(1)} and {upper.toFixed(1)} {displayUnit}. We are {certainty.toFixed(0)}% sure.</p>
+    </div>}
+
+    <details className="rounded-2xl border border-slate-800 bg-slate-900/50 px-5 py-4 text-sm text-slate-400"><summary className="cursor-pointer font-medium text-slate-300">About this forecast</summary><p className="mt-3 leading-relaxed">The expected value is calculated from recent weather patterns and historical production. The lower and upper values show the selected forecast range at {ciLevel}% coverage.</p></details>
+  </div>;
 };

@@ -376,7 +376,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100">
       {/* Header + Logout */}
       <div className="relative">
-        <Header activeModel="keras_nn" isHealthy={telemetry.status === "HEALTHY"} />
+        <Header isHealthy={telemetry.status === "HEALTHY"} />
         <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50">
           <button
             onClick={handleLogout}
@@ -442,7 +442,7 @@ export default function AdminDashboard() {
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
-                {tab.label}
+                {tab.key === "forecast" ? "Forecast" : tab.key === "map" ? "Regions" : tab.key === "monitor" ? "Weather" : "Battery requests"}
               </button>
             ))}
           </div>
@@ -475,7 +475,7 @@ export default function AdminDashboard() {
                 />
               )}
 
-              {activeTab === "monitor" && <MonitorTab telemetry={telemetry} />}
+              {activeTab === "monitor" && <MonitorTab telemetry={telemetry} onRefresh={handleRefresh} isRefreshing={isRefreshing} />}
 
 
               {/* Battery Requests Tab */}

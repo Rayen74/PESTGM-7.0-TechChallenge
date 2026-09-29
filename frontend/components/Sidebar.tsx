@@ -50,19 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <h2 className="font-bold text-slate-100 text-base">Paramètres du Système</h2>
         </div>
 
-        {/* Active Model Indicator */}
-        <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs space-y-1">
-          <div className="flex items-center justify-between text-slate-300 font-semibold">
-            <span>Modèle Actif :</span>
-            <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-              keras_nn ⚡
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-tight">
-            Deep Neural Network (Validation RMSE: 0.759 W — Top Performer)
-          </p>
-        </div>
-
         {/* 1. Spatial Scale */}
         <div className="space-y-3">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
