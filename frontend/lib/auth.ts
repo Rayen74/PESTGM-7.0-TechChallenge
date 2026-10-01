@@ -13,20 +13,6 @@ export type User = {
   steg_contract_no?: string;
 };
 
-// Hard-coded demo credentials for the helper panel (display only)
-export const DEMO_USERS = [
-  {
-    email: 'admin@example.com',
-    password: 'admin123',
-    role: 'ADMIN' as UserRole,
-  },
-  {
-    email: 'citizen@example.com',
-    password: 'citizen123',
-    role: 'CITIZEN' as UserRole,
-  },
-];
-
 export function getSession() {
   if (typeof window === 'undefined') return null;
   const raw = localStorage.getItem('session');
@@ -42,6 +28,3 @@ export function logout() {
   }
 }
 
-export function getDemoCredentials() {
-  return DEMO_USERS;
-}

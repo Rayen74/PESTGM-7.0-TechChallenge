@@ -92,7 +92,7 @@ def _compute_hourly_load(profile: Dict[str, Any], appliances: Optional[List[Dict
     if appliances and len(appliances) > 0:
         # 24-hour load based on custom appliances
         daily_appliance_kwh = sum(
-            (float(app.get("watts", 0)) * float(app.get("quantity", 1)) * float(app.get("hours_per_day", 1))) / 1000.0
+            (float(app.get("consumption_w") if app.get("consumption_w") is not None else app.get("watts", 0)) * float(app.get("quantity", 1)) * float(app.get("hours_per_day", 1))) / 1000.0
             for app in appliances
         )
         base_annual_kwh = max(1000.0, daily_appliance_kwh * 365.0)
@@ -103,7 +103,7 @@ def _compute_hourly_load(profile: Dict[str, Any], appliances: Optional[List[Dict
     return generate_hourly_consumption(archetype=archetype, annual_kwh=base_annual_kwh, num_hours=hours)
 
 
-def audit_request_dossier(conn: Any, request_id: int) -> Dict[str, Any]:
+def audit_request_dossier(conn: Any, request_id: str) -> Dict[str, Any]:
     """
     Executes a comprehensive technical audit of a citizen's battery connection request.
     Orchestrates all deterministic tools and applies electrotechnical reasoning.
@@ -277,16 +277,16 @@ def audit_request_dossier(conn: Any, request_id: int) -> Dict[str, Any]:
         "simulation_kpis": {
             "self_consumption_pct": self_cons,
             "self_sufficiency_pct": self_suff,
-            "grid_import_kwh": kpis.get("total_grid_imported_kwh", 0),
-            "grid_export_kwh": kpis.get("total_grid_exported_kwh", 0),
-            "curtailment_prevented_kwh": kpis.get("curtailment_prevented_kwh", 0),
+            "grid_import_kwh": kpis.get("total_grid_import_kwh", kpis.get("total_grid_imported_kwh", 0)),
+            "grid_export_kwh": kpis.get("total_grid_export_kwh", kpis.get("total_grid_exported_kwh", 0)),
+            "curtailment_prevented_kwh": kpis.get("curtailment_prevented_kwh", kpis.get("total_curtailment_prevented_kwh", 0)),
         },
         "better_alternative": better_alternative,
         "agent_version": "PESTGM-Agent-v1.0 (Deterministic Physics + Heuristic Reasoning)"
     }
 
 
-def recommend_optimal_battery(conn: Any, user_id: int, custom_appliances: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def recommend_optimal_battery(conn: Any, user_id: str, custom_appliances: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Advisor Agent for Citizens:
     Scans the certified catalog and determines the optimal battery for the citizen's specific setup.

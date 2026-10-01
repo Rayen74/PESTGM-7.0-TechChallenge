@@ -1,6 +1,9 @@
+"use client";
+
 import React from "react";
 import { Sliders, RefreshCw, Layers, Calendar, Cpu, ShieldCheck } from "lucide-react";
 import { DISTRICTS, GOVERNORATES } from "@/lib/constants";
+import { useI18n } from "@/lib/i18n";
 
 interface SidebarProps {
   scaleType: "National (Agrégé)" | "District (Régional)" | "Gouvernorat (Local)";
@@ -39,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRefresh,
   isRefreshing,
 }) => {
+  const { t, formatNumber, translateScale, translateHorizon, translateDistrict, translateGovernorate } = useI18n();
   const govList = Object.keys(GOVERNORATES);
 
   return (
@@ -47,14 +51,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Title */}
         <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
           <Sliders className="w-5 h-5 text-amber-400" />
-          <h2 className="font-bold text-slate-100 text-base">Paramètres du Système</h2>
+          <h2 className="font-bold text-slate-100 text-base">{t.sidebar.systemParams}</h2>
         </div>
 
         {/* 1. Spatial Scale */}
         <div className="space-y-3">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-amber-400" />
-            1. Échelle Spatiale
+            {t.sidebar.spatialScale}
           </label>
           <div className="space-y-1.5">
             {(["National (Agrégé)", "District (Régional)", "Gouvernorat (Local)"] as const).map((type) => (
@@ -74,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onChange={() => setScaleType(type)}
                   className="accent-amber-500"
                 />
-                {type}
+                {translateScale(type)}
               </label>
             ))}
           </div>
@@ -82,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Sub-selector for District */}
           {scaleType === "District (Régional)" && (
             <div className="pt-2">
-              <label className="text-xs text-slate-400 mb-1 block">Choisir le District :</label>
+              <label className="text-xs text-slate-400 mb-1 block">{t.sidebar.chooseDistrict}</label>
               <select
                 value={selectedDistrict}
                 onChange={(e) => setSelectedDistrict(e.target.value)}
@@ -90,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 {DISTRICTS.map((d) => (
                   <option key={d} value={d}>
-                    {d}
+                    {translateDistrict(d)}
                   </option>
                 ))}
               </select>
@@ -100,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Sub-selector for Governorate */}
           {scaleType === "Gouvernorat (Local)" && (
             <div className="pt-2">
-              <label className="text-xs text-slate-400 mb-1 block">Choisir le Gouvernorat :</label>
+              <label className="text-xs text-slate-400 mb-1 block">{t.sidebar.chooseGovernorate}</label>
               <select
                 value={selectedGov}
                 onChange={(e) => setSelectedGov(e.target.value)}
@@ -108,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 {govList.map((g) => (
                   <option key={g} value={g}>
-                    {g}
+                    {translateGovernorate(g)}
                   </option>
                 ))}
               </select>
@@ -120,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-3 border-t border-slate-800/80 pt-4">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
             <Calendar className="w-3.5 h-3.5 text-amber-400" />
-            2. Horizon Temporel
+            {t.sidebar.temporalHorizon}
           </label>
           <div className="space-y-1.5">
             {(
@@ -146,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onChange={() => setHorizonChoice(h)}
                   className="accent-amber-500"
                 />
-                {h}
+                {translateHorizon(h)}
               </label>
             ))}
           </div>
@@ -157,14 +161,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-amber-400" />
-              3. Puissance Installée
+              {t.sidebar.installedCapacity}
             </label>
             <span className="text-[11px] font-mono text-amber-400 font-semibold">
-              {capVal} {capUnit}
+              {formatNumber(capVal, { maximumFractionDigits: 1 })} {capUnit}
             </span>
           </div>
           <p className="text-[11px] text-slate-400">
-            Ajustez la capacité pour simuler une centrale ou une zone :
+            {t.sidebar.capacityHelp}
           </p>
 
           <div className="grid grid-cols-3 gap-2">
@@ -196,9 +200,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              4. Intervalle de Confiance
+              {t.sidebar.confidenceInterval}
             </label>
-            <span className="text-xs font-mono font-bold text-amber-400">{ciLevel}%</span>
+            <span className="text-xs font-mono font-bold text-amber-400">{formatNumber(ciLevel)}%</span>
           </div>
           <input
             type="range"
@@ -209,9 +213,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onChange={(e) => setCiLevel(parseInt(e.target.value, 10))}
             className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
           />
-          <div className="flex justify-between text-[10px] text-slate-500">
+          <div className="flex justify-between text-[10px] text-slate-500 font-mono">
             <span>80%</span>
-            <span>90% (Standard)</span>
+            <span>90% ({t.sidebar.standard})</span>
             <span>98%</span>
           </div>
         </div>
@@ -228,7 +232,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-amber-400" : ""}`} />
-            {isRefreshing ? "Actualisation en cours..." : "🔄 Rafraîchir les données météo"}
+            {isRefreshing ? t.sidebar.refreshingButton : t.sidebar.refreshButton}
           </button>
         </div>
       </div>

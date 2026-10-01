@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, logout } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useI18n } from "@/lib/i18n";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { NormalizationBanner } from "@/components/NormalizationBanner";
@@ -11,8 +12,8 @@ import { KpiCards } from "@/components/KpiCards";
 import { ForecastTab } from "@/components/tabs/ForecastTab";
 import { MapTab } from "@/components/tabs/MapTab";
 import { MonitorTab } from "@/components/tabs/MonitorTab";
+import { DispatchTab } from "@/components/tabs/DispatchTab";
 import {
-
   fetchForecast,
   fetchSpatialSummary,
   fetchDispatchPreview,
@@ -44,12 +45,8 @@ import {
   XCircle,
   Info,
   Wrench,
-  Calendar,
-  UserCheck,
   Check,
   X,
-  Clock,
-  ArrowRight,
   Bot,
   Sparkles,
   ShieldAlert,
@@ -57,9 +54,9 @@ import {
   Gauge,
 } from "lucide-react";
 
-
 export default function AdminDashboard() {
   const router = useRouter();
+  const { t, formatNumber, formatDate, isRtl, translateStatus, translateStage } = useI18n();
 
   // ---------- Auth guard ----------
   useEffect(() => {
@@ -146,7 +143,7 @@ export default function AdminDashboard() {
 
   const entityLabel =
     scaleType === "National (Agrégé)"
-      ? "Tunisie Entière"
+      ? "Tunisie"
       : scaleType === "District (Régional)"
       ? selectedDistrict
       : selectedGov;
@@ -190,7 +187,7 @@ export default function AdminDashboard() {
       setDispatchData(dData);
       setTelemetry(tData);
     } catch (err) {
-      console.error("Erreur lors de la récupération des données :", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -208,8 +205,7 @@ export default function AdminDashboard() {
       const data = await fetchAdminRequests(filter);
       setRequests(data);
     } catch (e) {
-      console.error("Failed to fetch admin requests", e);
-      // Fallback: empty list (API might not be running)
+      console.error(e);
       setRequests([]);
     } finally {
       setReqLoading(false);
@@ -269,12 +265,16 @@ export default function AdminDashboard() {
         steg_meter_ref: trackingForm.steg_meter_ref || undefined,
         notes: trackingForm.notes || undefined,
       });
-      setToastMsg(`Suivi de la demande #${trackingModalReq.id} mis à jour : ${trackingForm.stage}`);
+      setToastMsg(
+        t.adminRequests.toastUpdated
+          .replace("{id}", trackingModalReq.id)
+          .replace("{stage}", translateStage(trackingForm.stage))
+      );
       setTimeout(() => setToastMsg(null), 3000);
       closeTrackingModal();
       await loadRequests();
     } catch (err: any) {
-      setToastMsg(err.message || "Erreur lors de la mise à jour du suivi");
+      setToastMsg(err.message || t.adminRequests.toastError);
       setTimeout(() => setToastMsg(null), 4000);
     } finally {
       setUpdatingTracking(false);
@@ -296,7 +296,7 @@ export default function AdminDashboard() {
       const report = await auditRequestWithAgent(req.id);
       setAuditReport(report);
     } catch (err: any) {
-      setAuditError(err.message || "Erreur lors de l'analyse technique par l'agent IA.");
+      setAuditError(err.message || t.adminRequests.auditErrorTitle);
     } finally {
       setAuditLoading(false);
     }
@@ -310,87 +310,115 @@ export default function AdminDashboard() {
         auditReport.suggested_decision,
         auditReport.suggested_reason
       );
-      setToastMsg(`Décision suggérée (${auditReport.suggested_decision}) appliquée avec succès !`);
+      setToastMsg(
+        t.adminRequests.toastDecisionApplied.replace(
+          "{decision}",
+          translateStatus(auditReport.suggested_decision)
+        )
+      );
       setTimeout(() => setToastMsg(null), 3000);
       setAgentAuditModalReq(null);
       await loadRequests();
     } catch (err: any) {
-      setToastMsg(err.message || "Erreur lors de l'application de la décision.");
+      setToastMsg(err.message || t.adminRequests.toastError);
       setTimeout(() => setToastMsg(null), 4000);
     }
   };
 
   const handleDecision = async (
-    requestId: number,
+    requestId: string,
     status: "APPROVED" | "REJECTED" | "INFO_REQUESTED"
   ) => {
     try {
       await submitAdminDecision(requestId, status);
       await loadRequests();
-      setToastMsg(`Demande #${requestId} → ${status}`);
+      setToastMsg(`Demande #${requestId} → ${translateStatus(status)}`);
       setTimeout(() => setToastMsg(null), 3000);
     } catch (e) {
       console.error("Decision error", e);
     }
   };
 
-
   // ---------- Refresh handler ----------
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
       await triggerForecastRefresh(4, ciLevel);
-      setToastMsg("Données actualisées avec succès via Open-Meteo!");
+      setToastMsg(t.adminRequests.toastDataRefreshed);
       await loadDashboardData();
     } catch (err) {
       console.error(err);
-      setToastMsg("Erreur lors de l'actualisation météo.");
+      setToastMsg(t.adminRequests.toastRefreshError);
     } finally {
       setIsRefreshing(false);
       setTimeout(() => setToastMsg(null), 4000);
     }
   };
 
+  // ---------- Dispatch download handlers ----------
+  const handleDownloadDispatchCsv = () => {
+    const url = getExportUrl({
+      format: "csv",
+      scale_level: scaleLevelCode as any,
+      entity_name: entityName,
+      horizon: horizonCode as any,
+      capacity_kwp: capacityKwp,
+      unit: displayUnit as any,
+    });
+    window.open(url, "_blank");
+  };
 
+  const handleDownloadDispatchJson = () => {
+    const url = getExportUrl({
+      format: "json",
+      scale_level: scaleLevelCode as any,
+      entity_name: entityName,
+      horizon: horizonCode as any,
+      capacity_kwp: capacityKwp,
+      unit: displayUnit as any,
+    });
+    window.open(url, "_blank");
+  };
 
-  // ---------- Status badge colors ----------
   const statusColor = (s: string) => {
     switch (s) {
-      case "APPROVED": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-      case "REJECTED": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
-      case "INFO_REQUESTED": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
-      case "UNDER_REVIEW": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
-      default: return "bg-slate-500/20 text-slate-400 border-slate-500/30";
+      case "APPROVED":
+        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+      case "REJECTED":
+        return "bg-rose-500/20 text-rose-400 border-rose-500/30";
+      case "INFO_REQUESTED":
+        return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+      case "UNDER_REVIEW":
+        return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      default:
+        return "bg-slate-500/20 text-slate-400 border-slate-500/30";
     }
   };
 
   const TABS = [
-    { key: "forecast", icon: BarChart3, label: "📊 Prévisions & Incertitude" },
-    { key: "map", icon: Map, label: "🗺️ Répartition Spatiale" },
-    { key: "monitor", icon: Activity, label: "🛰️ Surveillance Météo" },
-    { key: "requests", icon: ClipboardList, label: "📋 Demandes Batteries" },
+    { key: "forecast", icon: BarChart3, label: t.tabs.forecast },
+    { key: "map", icon: Map, label: t.tabs.map },
+    { key: "dispatch", icon: Zap, label: t.tabs.dispatch },
+    { key: "monitor", icon: Activity, label: t.tabs.monitor },
+    { key: "requests", icon: ClipboardList, label: t.tabs.requests },
   ] as const;
-
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100">
-      {/* Header + Logout */}
-      <div className="relative">
-        <Header isHealthy={telemetry.status === "HEALTHY"} />
-        <div className="absolute right-6 top-1/2 -translate-y-1/2 z-50">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800/80 border border-slate-700 text-xs text-slate-300 hover:text-slate-100 hover:bg-slate-700 transition-colors cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Déconnexion
-          </button>
-        </div>
-      </div>
+      {/* Header with horizontal items: Status, Logout, LanguageSelector */}
+      <Header isHealthy={telemetry.status === "HEALTHY"}>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-xs text-slate-300 hover:text-slate-100 hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{t.common.logout}</span>
+        </button>
+      </Header>
 
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-20 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs shadow-2xl animate-bounce">
+        <div className={`fixed top-20 ${isRtl ? "left-6" : "right-6"} z-50 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs shadow-2xl animate-bounce`}>
           {toastMsg}
         </div>
       )}
@@ -442,7 +470,7 @@ export default function AdminDashboard() {
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
-                {tab.key === "forecast" ? "Forecast" : tab.key === "map" ? "Regions" : tab.key === "monitor" ? "Weather" : "Battery requests"}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -451,7 +479,7 @@ export default function AdminDashboard() {
           {loading && !forecastData && activeTab !== "requests" ? (
             <div className="glass-panel p-16 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
-              <p className="text-sm text-slate-400">Chargement des données du réseau solaire tunisien...</p>
+              <p className="text-sm text-slate-400">{t.common.loading}</p>
             </div>
           ) : (
             <>
@@ -475,15 +503,29 @@ export default function AdminDashboard() {
                 />
               )}
 
-              {activeTab === "monitor" && <MonitorTab telemetry={telemetry} onRefresh={handleRefresh} isRefreshing={isRefreshing} />}
+              {activeTab === "dispatch" && dispatchData && (
+                <DispatchTab
+                  records={dispatchData.records}
+                  displayUnit={displayUnit}
+                  onDownloadCsv={handleDownloadDispatchCsv}
+                  onDownloadJson={handleDownloadDispatchJson}
+                />
+              )}
 
+              {activeTab === "monitor" && (
+                <MonitorTab
+                  telemetry={telemetry}
+                  onRefresh={handleRefresh}
+                  isRefreshing={isRefreshing}
+                />
+              )}
 
               {/* Battery Requests Tab */}
               {activeTab === "requests" && (
                 <div className="space-y-4">
                   {/* Filter bar */}
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-xs text-slate-500 font-medium">Filtrer :</span>
+                    <span className="text-xs text-slate-500 font-medium">{t.adminRequests.filterLabel}</span>
                     {["ALL", "SUBMITTED", "UNDER_REVIEW", "INFO_REQUESTED", "APPROVED", "REJECTED"].map((f) => (
                       <button
                         key={f}
@@ -494,7 +536,7 @@ export default function AdminDashboard() {
                             : "bg-slate-800/40 border-slate-700/50 text-slate-400 hover:text-slate-200"
                         }`}
                       >
-                        {f === "ALL" ? "Toutes" : f.replace(/_/g, " ")}
+                        {f === "ALL" ? t.adminRequests.filterAll : translateStatus(f)}
                       </button>
                     ))}
                   </div>
@@ -506,22 +548,22 @@ export default function AdminDashboard() {
                   ) : requests.length === 0 ? (
                     <div className="glass-panel p-12 text-center">
                       <ClipboardList className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                      <p className="text-slate-500 text-sm">Aucune demande de batterie trouvée</p>
+                      <p className="text-slate-500 text-sm">{t.adminRequests.noRequests}</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-800">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-slate-800/60 text-slate-400 text-xs uppercase tracking-wider">
-                            <th className="px-4 py-3 text-left">ID</th>
-                            <th className="px-4 py-3 text-left">Citoyen</th>
-                            <th className="px-4 py-3 text-left">Batterie</th>
-                            <th className="px-4 py-3 text-left">Capacité</th>
-                            <th className="px-4 py-3 text-left">Appareils</th>
-                            <th className="px-4 py-3 text-left">Statut</th>
-                            <th className="px-4 py-3 text-left">Suivi Installation</th>
-                            <th className="px-4 py-3 text-left">Date</th>
-                            <th className="px-4 py-3 text-left">Actions</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thId}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thCitizen}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thBattery}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thCapacity}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thAppliances}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thStatus}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thTracking}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thDate}</th>
+                            <th className={`px-4 py-3 ${isRtl ? "text-right" : "text-left"}`}>{t.adminRequests.thActions}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60">
@@ -529,23 +571,23 @@ export default function AdminDashboard() {
                             <tr key={req.id} className="hover:bg-slate-800/30 transition-colors">
                               <td className="px-4 py-3 font-mono text-amber-400">#{req.id}</td>
                               <td className="px-4 py-3">
-                                <div className="text-slate-200 text-xs">{req.citizen_name || "—"}</div>
-                                <div className="text-slate-500 text-xs">{req.citizen_email || "—"}</div>
+                                <div className="text-slate-200 text-xs font-medium">{req.citizen_name || "—"}</div>
+                                <div className="text-slate-500 text-xs font-mono">{req.citizen_email || "—"}</div>
                               </td>
                               <td className="px-4 py-3 text-xs">
                                 {req.battery_brand} {req.battery_model}
                               </td>
-                              <td className="px-4 py-3 text-xs text-slate-400">
-                                {req.usable_capacity_kwh} kWh
+                              <td className="px-4 py-3 text-xs text-slate-400 font-mono">
+                                {formatNumber(req.usable_capacity_kwh, { maximumFractionDigits: 1 })} kWh
                               </td>
                               <td className="px-4 py-3 text-xs">
                                 {req.appliances && req.appliances.length > 0 ? (
                                   <div className="space-y-1">
                                     <span className="text-[11px] font-semibold text-emerald-400">
-                                      {req.appliances.length} appareil(s) :
+                                      {t.adminRequests.appliancesCount.replace("{count}", formatNumber(req.appliances.length))}
                                     </span>
                                     <div className="text-[11px] text-slate-400 max-w-xs truncate">
-                                      {req.appliances.map((a) => `${a.name} (${a.consumption_w}W)`).join(", ")}
+                                      {req.appliances.map((a) => `${a.name} (${formatNumber(a.consumption_w)}W)`).join(", ")}
                                     </div>
                                   </div>
                                 ) : (
@@ -554,7 +596,7 @@ export default function AdminDashboard() {
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor(req.status)}`}>
-                                  {req.status}
+                                  {translateStatus(req.status)}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
@@ -562,14 +604,13 @@ export default function AdminDashboard() {
                                   <div className="flex items-center gap-2">
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                                       <Wrench className="w-3 h-3" />
-                                      {req.tracking_stage || "APPROVED"}
+                                      {translateStage(req.tracking_stage || "APPROVED")}
                                     </span>
                                     <button
                                       onClick={() => openTrackingModal(req)}
                                       className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-amber-300 font-medium transition-colors cursor-pointer"
-                                      title="Gérer l'installation"
                                     >
-                                      Gérer
+                                      {t.adminRequests.manageTracking}
                                     </button>
                                   </div>
                                 ) : (
@@ -577,7 +618,7 @@ export default function AdminDashboard() {
                                 )}
                               </td>
                               <td className="px-4 py-3 text-xs text-slate-500">
-                                {new Date(req.created_at).toLocaleDateString("fr-TN")}
+                                {formatDate(req.created_at)}
                               </td>
 
                               <td className="px-4 py-3">
@@ -585,10 +626,9 @@ export default function AdminDashboard() {
                                   <button
                                     onClick={() => handleOpenAgentAudit(req)}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-xs font-medium transition-colors cursor-pointer"
-                                    title="Lancer l'audit technique par l'Agent IA"
                                   >
                                     <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                                    <span>Audit IA</span>
+                                    <span>{t.adminRequests.launchAiAudit}</span>
                                   </button>
 
                                   {(req.status === "SUBMITTED" || req.status === "UNDER_REVIEW") && (
@@ -596,21 +636,21 @@ export default function AdminDashboard() {
                                       <button
                                         onClick={() => handleDecision(req.id, "APPROVED")}
                                         className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                                        title="Approuver"
+                                        title={t.adminRequests.btnApprove}
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
                                       </button>
                                       <button
                                         onClick={() => handleDecision(req.id, "REJECTED")}
                                         className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
-                                        title="Rejeter"
+                                        title={t.adminRequests.btnReject}
                                       >
                                         <XCircle className="w-4 h-4" />
                                       </button>
                                       <button
                                         onClick={() => handleDecision(req.id, "INFO_REQUESTED")}
                                         className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
-                                        title="Demander info"
+                                        title={t.adminRequests.btnRequestInfo}
                                       >
                                         <Info className="w-4 h-4" />
                                       </button>
@@ -622,7 +662,7 @@ export default function AdminDashboard() {
                                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium transition-colors cursor-pointer"
                                     >
                                       <Wrench className="w-3 h-3" />
-                                      <span>Suivi</span>
+                                      <span>{t.adminRequests.btnTracking}</span>
                                     </button>
                                   )}
                                 </div>
@@ -630,7 +670,6 @@ export default function AdminDashboard() {
                             </tr>
                           ))}
                         </tbody>
-
                       </table>
                     </div>
                   )}
@@ -649,14 +688,17 @@ export default function AdminDashboard() {
             <div className="flex items-start justify-between pb-4 border-b border-slate-800">
               <div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  Suivi d&apos;Installation STEG
+                  {t.adminRequests.trackingModalTitle}
                 </span>
                 <h3 className="text-lg font-bold text-slate-100 mt-0.5">
-                  Demande #{trackingModalReq.id} — {trackingModalReq.battery_brand} {trackingModalReq.battery_model}
+                  {t.adminRequests.trackingModalHeader
+                    .replace("{id}", trackingModalReq.id)
+                    .replace("{brand}", trackingModalReq.battery_brand)
+                    .replace("{model}", trackingModalReq.battery_model)}
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Citoyen : <strong className="text-slate-200">{trackingModalReq.citizen_name || trackingModalReq.citizen_email}</strong>
-                  {trackingModalReq.steg_contract_no ? ` · Police: ${trackingModalReq.steg_contract_no}` : ""}
+                  {t.adminRequests.trackingCitizenLabel} <strong className="text-slate-200">{trackingModalReq.citizen_name || trackingModalReq.citizen_email}</strong>
+                  {trackingModalReq.steg_contract_no ? ` · ${t.adminRequests.trackingPoliceLabel} ${trackingModalReq.steg_contract_no}` : ""}
                 </p>
               </div>
               <button
@@ -670,15 +712,15 @@ export default function AdminDashboard() {
             {/* Stepper visual preview */}
             <div className="py-4 border-b border-slate-800/80">
               <span className="text-[11px] font-semibold text-slate-400 block mb-2">
-                Étape du cycle de vie :
+                {t.adminRequests.lifecycleStage}
               </span>
               <div className="grid grid-cols-5 gap-1.5 text-center">
                 {[
-                  { key: "APPROVED", label: "Approuvé" },
-                  { key: "INSTALLATION_SCHEDULED", label: "Planifié" },
-                  { key: "INSTALLING", label: "Installation" },
-                  { key: "COMMISSIONING", label: "Mise en service" },
-                  { key: "ACTIVE", label: "Actif" },
+                  { key: "APPROVED", label: t.adminRequests.stageApproved },
+                  { key: "INSTALLATION_SCHEDULED", label: t.adminRequests.stageScheduled },
+                  { key: "INSTALLING", label: t.adminRequests.stageInstalling },
+                  { key: "COMMISSIONING", label: t.adminRequests.stageCommissioning },
+                  { key: "ACTIVE", label: t.adminRequests.stageActive },
                 ].map((s, idx) => {
                   const stages = ["APPROVED", "INSTALLATION_SCHEDULED", "INSTALLING", "COMMISSIONING", "ACTIVE"];
                   const currentIdx = stages.indexOf(trackingForm.stage);
@@ -698,7 +740,9 @@ export default function AdminDashboard() {
                           : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
                       }`}
                     >
-                      <div className="text-[10px] font-mono text-slate-400">Étape {idx + 1}</div>
+                      <div className="text-[10px] font-mono text-slate-400">
+                        {t.common.step} {formatNumber(idx + 1)}
+                      </div>
                       <div className="text-xs font-semibold mt-0.5 leading-tight">{s.label}</div>
                     </button>
                   );
@@ -708,43 +752,40 @@ export default function AdminDashboard() {
 
             {/* Form Fields */}
             <div className="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1">
-              {/* Stage selector dropdown */}
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">
-                  Étape Actuelle (Statut STEG)
+                  {t.adminRequests.currentStageLabel}
                 </label>
                 <select
                   value={trackingForm.stage}
                   onChange={(e) => setTrackingForm((prev) => ({ ...prev, stage: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                 >
-                  <option value="APPROVED">1. APPROVED (Approuvé par ingénieur)</option>
-                  <option value="INSTALLATION_SCHEDULED">2. INSTALLATION_SCHEDULED (Planifié avec installateur)</option>
-                  <option value="INSTALLING">3. INSTALLING (Travaux de pose en cours)</option>
-                  <option value="COMMISSIONING">4. COMMISSIONING (Essais et conformité réseau)</option>
-                  <option value="ACTIVE">5. ACTIVE (Batterie en service et synchronisée)</option>
+                  <option value="APPROVED">{t.adminRequests.optApproved}</option>
+                  <option value="INSTALLATION_SCHEDULED">{t.adminRequests.optScheduled}</option>
+                  <option value="INSTALLING">{t.adminRequests.optInstalling}</option>
+                  <option value="COMMISSIONING">{t.adminRequests.optCommissioning}</option>
+                  <option value="ACTIVE">{t.adminRequests.optActive}</option>
                 </select>
               </div>
 
-              {/* Installer Name */}
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">
-                  Nom de l&apos;installateur agréé
+                  {t.adminRequests.installerNameLabel}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: SolarTech Tunisie, EcoPower S.A."
+                  placeholder={t.adminRequests.installerNamePlaceholder}
                   value={trackingForm.installer_name}
                   onChange={(e) => setTrackingForm((prev) => ({ ...prev, installer_name: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-left rtl:text-right"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Scheduled Date */}
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">
-                    Date prévue d&apos;installation
+                    {t.adminRequests.scheduledDateLabel}
                   </label>
                   <input
                     type="date"
@@ -754,10 +795,9 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {/* Commissioning Date */}
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">
-                    Date de mise en service
+                    {t.adminRequests.commissioningDateLabel}
                   </label>
                   <input
                     type="date"
@@ -768,31 +808,29 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* STEG Meter Ref */}
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">
-                  Référence compteur bidirectionnel STEG
+                  {t.adminRequests.meterRefLabel}
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: MTR-STEG-2026-9842"
+                  placeholder={t.adminRequests.meterRefPlaceholder}
                   value={trackingForm.steg_meter_ref}
                   onChange={(e) => setTrackingForm((prev) => ({ ...prev, steg_meter_ref: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-left rtl:text-right font-mono"
                 />
               </div>
 
-              {/* Notes */}
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">
-                  Notes techniques / Commentaires de suivi
+                  {t.adminRequests.notesLabel}
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Instructions spécifiques pour le raccordement ou observations..."
+                  placeholder={t.adminRequests.notesPlaceholder}
                   value={trackingForm.notes}
                   onChange={(e) => setTrackingForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-left rtl:text-right"
                 />
               </div>
             </div>
@@ -804,7 +842,7 @@ export default function AdminDashboard() {
                 onClick={closeTrackingModal}
                 className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                Annuler
+                {t.common.cancel}
               </button>
 
               <button
@@ -818,7 +856,7 @@ export default function AdminDashboard() {
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                {updatingTracking ? "Enregistrement…" : "Enregistrer l'étape"}
+                {updatingTracking ? t.adminRequests.savingStage : t.adminRequests.saveStage}
               </button>
             </div>
           </div>
@@ -840,15 +878,15 @@ export default function AdminDashboard() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-bold text-slate-100">
-                      Audit Technique IA — Dossier #{agentAuditModalReq.id}
+                      {t.adminRequests.auditModalTitle.replace("{id}", agentAuditModalReq.id)}
                     </h3>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
                       <Sparkles className="w-3 h-3" />
-                      Agentic AI
+                      {t.adminRequests.agenticAiTag}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Citoyen : {agentAuditModalReq.citizen_name || "—"} • Contrat STEG : {agentAuditModalReq.steg_contract_no || "Non renseigné"}
+                    {t.adminRequests.trackingCitizenLabel} {agentAuditModalReq.citizen_name || "—"} • {t.adminRequests.auditContractLabel} {agentAuditModalReq.steg_contract_no || "—"}
                   </p>
                 </div>
               </div>
@@ -871,10 +909,10 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-center space-y-1">
                   <p className="text-sm font-semibold text-slate-200">
-                    L&apos;Agent IA orchestre les outils de calcul...
+                    {t.adminRequests.auditOrchestrating}
                   </p>
                   <p className="text-xs text-slate-500 max-w-sm">
-                    Exécution de <code className="text-indigo-300">check_compatibility()</code>, <code className="text-indigo-300">get_pv_prediction()</code>, et simulation de dispatch horaire.
+                    {t.adminRequests.auditOrchestratingDesc}
                   </p>
                 </div>
               </div>
@@ -885,7 +923,7 @@ export default function AdminDashboard() {
               <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-start gap-2.5">
                 <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Erreur d&apos;analyse</p>
+                  <p className="font-semibold">{t.adminRequests.auditErrorTitle}</p>
                   <p>{auditError}</p>
                 </div>
               </div>
@@ -897,13 +935,13 @@ export default function AdminDashboard() {
                 {/* Score & Verdict Banner */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl font-black text-sm ${auditReport.score >= 80 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : auditReport.score >= 60 ? "bg-amber-500/10 text-amber-400 border border-amber-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30"}`}>
-                      {auditReport.score}/100
+                    <div className={`p-2.5 rounded-xl font-black text-sm font-mono ${auditReport.score >= 80 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : auditReport.score >= 60 ? "bg-amber-500/10 text-amber-400 border border-amber-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30"}`}>
+                      {formatNumber(auditReport.score)}/100
                     </div>
                     <div>
-                      <div className="text-[11px] text-slate-500 uppercase font-semibold">Score Technique</div>
+                      <div className="text-[11px] text-slate-500 uppercase font-semibold">{t.adminRequests.technicalScore}</div>
                       <div className="text-xs font-bold text-slate-200">
-                        {auditReport.score >= 80 ? "Excellent dimensionnement" : auditReport.score >= 60 ? "Dimensionnement moyen" : "Critique / Incompatible"}
+                        {auditReport.score >= 80 ? t.adminRequests.scoreExcellent : auditReport.score >= 60 ? t.adminRequests.scoreModerate : t.adminRequests.scoreCritical}
                       </div>
                     </div>
                   </div>
@@ -913,9 +951,9 @@ export default function AdminDashboard() {
                       {auditReport.compatibility_verdict === "PASSED" ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                     </div>
                     <div>
-                      <div className="text-[11px] text-slate-500 uppercase font-semibold">Compatibilité Matériel</div>
+                      <div className="text-[11px] text-slate-500 uppercase font-semibold">{t.adminRequests.hardwareCompatibility}</div>
                       <div className="text-xs font-bold text-slate-200">
-                        {auditReport.compatibility_verdict === "PASSED" ? "Homologué & Compatible" : "Incompatibilité bloquante"}
+                        {auditReport.compatibility_verdict === "PASSED" ? t.adminRequests.compatPassed : t.adminRequests.compatFailed}
                       </div>
                     </div>
                   </div>
@@ -925,9 +963,9 @@ export default function AdminDashboard() {
                       <TrendingUp className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="text-[11px] text-slate-500 uppercase font-semibold">Autoconsommation</div>
-                      <div className="text-xs font-bold text-indigo-300">
-                        {auditReport.simulation_kpis.self_consumption_pct.toFixed(1)}% (Autonomie: {auditReport.simulation_kpis.self_sufficiency_pct.toFixed(1)}%)
+                      <div className="text-[11px] text-slate-500 uppercase font-semibold">{t.adminRequests.selfConsumption}</div>
+                      <div className="text-xs font-bold text-indigo-300 font-mono">
+                        {formatNumber(auditReport.simulation_kpis.self_consumption_pct, { maximumFractionDigits: 1 })}% ({t.adminRequests.autonomy} {formatNumber(auditReport.simulation_kpis.self_sufficiency_pct, { maximumFractionDigits: 1 })}%)
                       </div>
                     </div>
                   </div>
@@ -936,15 +974,17 @@ export default function AdminDashboard() {
                 {/* Sizing & Grid Impact */}
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Batterie demandée :</span>
+                    <span className="text-slate-400">{t.adminRequests.requestedBattery}</span>
                     <span className="font-semibold text-slate-200">{auditReport.battery_selected}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Ratio de stockage (Capacité / PV kWc) :</span>
-                    <span className="font-semibold text-amber-400">{auditReport.sizing_ratio} kWh/kWc (Recommandé : 1.0 - 2.5)</span>
+                    <span className="text-slate-400">{t.adminRequests.storageRatio}</span>
+                    <span className="font-semibold text-amber-400 font-mono">
+                      {formatNumber(auditReport.sizing_ratio, { maximumFractionDigits: 2 })} kWh/kWp {t.adminRequests.recommendedRatio}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Impact sur le réseau STEG :</span>
+                    <span className="text-slate-400">{t.adminRequests.stegGridImpact}</span>
                     <span className="font-medium text-emerald-400">{auditReport.grid_impact_label}</span>
                   </div>
                 </div>
@@ -953,7 +993,7 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                     <Gauge className="w-3.5 h-3.5 text-indigo-400" />
-                    Constats Électrotechniques de l&apos;Agent
+                    {t.adminRequests.technicalFindingsTitle}
                   </h4>
                   <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5 text-xs text-slate-300">
                     {auditReport.technical_findings.map((f, i) => (
@@ -967,7 +1007,7 @@ export default function AdminDashboard() {
                   <div className="p-3.5 rounded-xl bg-indigo-950/20 border border-indigo-500/30 space-y-1.5">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
                       <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                      Appréciation Ingénieur IA (Ollama / LLM) :
+                      {t.adminRequests.aiEngineerReview}
                     </div>
                     <p className="text-xs text-indigo-200/90 italic leading-relaxed">
                       &ldquo;{auditReport.llm_commentary}&rdquo;
@@ -981,7 +1021,8 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2 text-amber-300">
                       <Info className="w-4 h-4 shrink-0" />
                       <span>
-                        Alternative plus performante identifiée : <strong>{auditReport.better_alternative.name}</strong> (+{auditReport.better_alternative.gain_pct}% autonomie).
+                        {t.adminRequests.betterAlternativeTitle} <strong>{auditReport.better_alternative.name}</strong>{" "}
+                        {t.adminRequests.betterGain.replace("{gain}", formatNumber(auditReport.better_alternative.gain_pct, { maximumFractionDigits: 1 }))}.
                       </span>
                     </div>
                   </div>
@@ -992,13 +1033,13 @@ export default function AdminDashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-[11px] font-semibold text-slate-400 uppercase block">
-                        Recommandation de l&apos;Agent pour le District
+                        {t.adminRequests.agentRecommendationForDistrict}
                       </span>
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 mt-1 rounded-full text-xs font-bold border ${auditReport.suggested_decision === "APPROVED" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : auditReport.suggested_decision === "REJECTED" ? "bg-rose-500/20 text-rose-300 border-rose-500/40" : "bg-amber-500/20 text-amber-300 border-amber-500/40"}`}>
                         {auditReport.suggested_decision === "APPROVED" && <CheckCircle2 className="w-3.5 h-3.5" />}
                         {auditReport.suggested_decision === "REJECTED" && <XCircle className="w-3.5 h-3.5" />}
                         {auditReport.suggested_decision === "INFO_REQUESTED" && <Info className="w-3.5 h-3.5" />}
-                        {auditReport.suggested_decision}
+                        {translateStatus(auditReport.suggested_decision)}
                       </span>
                     </div>
 
@@ -1008,12 +1049,12 @@ export default function AdminDashboard() {
                       className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 hover:brightness-110 transition-all cursor-pointer"
                     >
                       <Check className="w-4 h-4" />
-                      Appliquer cette décision
+                      {t.adminRequests.applyDecision}
                     </button>
                   </div>
 
                   <p className="text-xs text-slate-400 italic">
-                    Motif pré-rempli : {auditReport.suggested_reason}
+                    {t.adminRequests.prefilledReason} {auditReport.suggested_reason}
                   </p>
                 </div>
               </div>
@@ -1026,7 +1067,7 @@ export default function AdminDashboard() {
                 onClick={() => setAgentAuditModalReq(null)}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
               >
-                Fermer l&apos;audit
+                {t.adminRequests.closeAudit}
               </button>
             </div>
           </div>
@@ -1035,4 +1076,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-

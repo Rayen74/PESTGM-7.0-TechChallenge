@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -21,7 +22,9 @@ try:
 except ImportError:
     pass
 
-SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET") or "tunisia-solar-steg-super-secret-key-production-grade"
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET must be configured; refusing to start with an insecure default key.")
 ALGORITHM = "HS256"
 security = HTTPBearer(auto_error=False)
 
@@ -107,11 +110,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
-    # Try decoding with SECRET_KEY and default fallback key for backward compatibility
+    # Tokens signed with removed/default keys are intentionally rejected.
     keys_to_try = [SECRET_KEY]
-    fallback_key = "tunisia-solar-steg-super-secret-key-production-grade"
-    if fallback_key not in keys_to_try:
-        keys_to_try.append(fallback_key)
 
     for key in keys_to_try:
         if HAS_JOSE:
@@ -180,18 +180,23 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide ou expiré")
 
     raw_user_id = payload.get("sub")
-    try:
-        user_id = int(raw_user_id)
-    except (ValueError, TypeError):
-        user_id = raw_user_id
+    user_id = str(raw_user_id)
 
     with get_db() as conn:
-        user = query_one(
-            conn,
-            "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE id = %s",
-            (user_id,)
-        )
-        if not user and isinstance(raw_user_id, str):
+        # Validate UUIDs before querying PostgreSQL. This turns stale numeric
+        # tokens into a normal auth failure instead of an unhandled 500.
+        user = None
+        try:
+            UUID(user_id)
+        except (ValueError, TypeError, AttributeError):
+            pass
+        else:
+            user = query_one(
+                conn,
+                "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE id = %s",
+                (user_id,)
+            )
+        if not user and isinstance(raw_user_id, str) and "@" in raw_user_id:
             user = query_one(
                 conn,
                 "SELECT id, email, full_name, role, steg_contract_no, is_verified FROM users WHERE LOWER(email) = %s",
@@ -199,6 +204,7 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
             )
         if not user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur non trouvé")
+        user["id"] = str(user["id"])
         return user
 
 
@@ -225,7 +231,7 @@ from api.email_tokens import (
 auth_router = APIRouter(prefix="/auth", tags=["Authentication & Verification"])
 
 # In-memory cooldown tracking for resend-email: {user_id: timestamp}
-_resend_cooldowns: Dict[int, float] = {}
+_resend_cooldowns: Dict[str, float] = {}
 COOLDOWN_SECONDS = 30
 
 

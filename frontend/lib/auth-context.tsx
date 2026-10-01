@@ -11,7 +11,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<User>;
   register: (data: { email: string; password: string; full_name: string; steg_contract_no?: string }) => Promise<User>;
   logout: () => void;
-  switchRoleDemo: (role: "CITIZEN" | "ADMIN") => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -86,16 +85,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearAuth();
   };
 
-  const switchRoleDemo = async (role: "CITIZEN" | "ADMIN") => {
-    if (role === "ADMIN") {
-      await login("admin@example.com", "admin123");
-    } else {
-      await login("citizen@example.com", "citizen123");
-    }
-  };
-
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, switchRoleDemo }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

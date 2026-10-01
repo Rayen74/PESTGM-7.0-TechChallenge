@@ -136,7 +136,7 @@ def simulate_battery_dispatch(
     nominal_capacity_kwh = float(battery.get("nominal_capacity_kwh", usable_capacity_kwh))
     max_charge_kw = float(battery.get("max_charge_kw", 2.5))
     max_discharge_kw = float(battery.get("max_discharge_kw", 2.5))
-    round_trip_eff = float(battery.get("round_trip_eff", 0.95))
+    round_trip_eff = float(battery.get("round_trip_eff") if battery.get("round_trip_eff") is not None else battery.get("roundtrip_efficiency", 0.95))
     charge_eff = float(np.sqrt(round_trip_eff))
     discharge_eff = float(np.sqrt(round_trip_eff))
     dod_pct = float(battery.get("dod_pct", 90.0)) / 100.0

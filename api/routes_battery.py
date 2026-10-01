@@ -11,11 +11,13 @@ FastAPI Routes for Battery Module:
 from datetime import datetime, timezone
 import json
 from typing import Optional, List, Dict, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr
 import pandas as pd
 import os
+import logging
 
 from api.database import (
     get_db,
@@ -52,6 +54,7 @@ from src.forecast import GOVERNORATES, predict_for_all_governorates, save_foreca
 from api.agent.technical_agent import audit_request_dossier, recommend_optimal_battery
 
 router = APIRouter(prefix="/api/battery", tags=["Battery Module"])
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -92,13 +95,13 @@ class PVProfileRequest(BaseModel):
 
 
 class SimulationRequest(BaseModel):
-    battery_id: int
+    battery_id: UUID
     initial_soc_pct: Optional[float] = 50.0
     horizon_days: Optional[int] = 4  # D to D+3 (96 hours)
 
 
 class ComparisonRequest(BaseModel):
-    battery_ids: List[int]
+    battery_ids: List[UUID]
     horizon_days: Optional[int] = 4
 
 
@@ -110,7 +113,7 @@ class ApplianceItem(BaseModel):
 
 
 class CitizenRequestSubmission(BaseModel):
-    battery_id: int
+    battery_id: UUID
     document_ref: Optional[str] = "Dossier_Technique_STEG.pdf"
     notes: Optional[str] = None
     appliances: Optional[List[ApplianceItem]] = []
@@ -156,7 +159,7 @@ def register(req: RegisterRequest):
             conn, sql, (req.email, pw_hash, req.full_name, role, req.steg_contract_no), id_column="id"
         )
 
-    token = create_access_token({"sub": user_id, "role": role})
+    token = create_access_token({"sub": str(user_id), "role": role})
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -182,7 +185,7 @@ def login(req: LoginRequest):
     if not user or not verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect.")
 
-    token = create_access_token({"sub": user["id"], "role": user["role"]})
+    token = create_access_token({"sub": str(user["id"]), "role": user["role"]})
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -467,9 +470,11 @@ def submit_request(req: CitizenRequestSubmission, user: Dict[str, Any] = Depends
         sim_res = simulate_battery_dispatch(pv_series, load_series, battery)
 
         # Handle JSON representation according to DB backend
-        profile_json = json.dumps(profile)
-        kpis_json = json.dumps(sim_res["kpis"])
-        appliances_json = json.dumps([a.dict() for a in (req.appliances or [])])
+        # PostgreSQL rows contain UUID/datetime values; convert them to JSON
+        # safe strings before storing the immutable request snapshot.
+        profile_json = json.dumps(profile, default=str)
+        kpis_json = json.dumps(sim_res["kpis"], default=str)
+        appliances_json = json.dumps([a.model_dump() for a in (req.appliances or [])], default=str)
 
         sql = """
             INSERT INTO battery_requests (
@@ -482,7 +487,7 @@ def submit_request(req: CitizenRequestSubmission, user: Dict[str, Any] = Depends
 
     return {
         "status": "success",
-        "request_id": request_id,
+        "request_id": str(request_id),
         "message": "Votre demande d'installation de stockage batterie a été soumise avec succès aux services techniques STEG."
     }
 
@@ -567,7 +572,7 @@ def get_all_requests(
 
 @router.patch("/admin/requests/{request_id}/decision")
 def update_request_decision(
-    request_id: int,
+    request_id: UUID,
     req: AdminDecisionRequest,
     admin: Dict[str, Any] = Depends(get_current_admin)
 ):
@@ -608,7 +613,7 @@ def update_request_decision(
 
 @router.patch("/admin/tracking/{request_id}")
 def update_installation_stage(
-    request_id: int,
+    request_id: UUID,
     req: InstallationStageUpdate,
     admin: Dict[str, Any] = Depends(get_current_admin)
 ):
@@ -641,7 +646,7 @@ def update_installation_stage(
 # ---------------------------------------------------------------------------
 @router.post("/agent/audit-request/{request_id}")
 def audit_request_with_agent(
-    request_id: int,
+    request_id: UUID,
     admin: Dict[str, Any] = Depends(get_current_admin)
 ):
     """
@@ -657,9 +662,8 @@ def audit_request_with_agent(
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Erreur d'audit par l'agent IA : {str(e)}")
+            logger.exception("Battery audit failed for request %s", request_id)
+            raise HTTPException(status_code=500, detail="L'audit technique est temporairement indisponible.")
 
 
 @router.post("/agent/recommend")
@@ -681,7 +685,6 @@ def recommend_battery_with_agent(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Erreur du conseiller IA : {str(e)}")
+            logger.exception("Battery recommendation failed for user %s", user.get("id"))
+            raise HTTPException(status_code=500, detail="Le conseiller batterie est temporairement indisponible.")
 

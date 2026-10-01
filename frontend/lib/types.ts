@@ -104,7 +104,7 @@ export interface MetadataResponse {
 export type UserRole = "CITIZEN" | "ADMIN";
 
 export interface User {
-  id: number;
+  id: string;
   email: string;
   full_name: string;
   role: UserRole;
@@ -112,8 +112,8 @@ export interface User {
 }
 
 export interface PVProfile {
-  id?: number;
-  user_id?: number;
+  id?: string;
+  user_id?: string;
   pv_capacity_kwp: number;
   governorate: string;
   inverter_brand: string;
@@ -127,7 +127,7 @@ export interface PVProfile {
 }
 
 export interface BatteryItem {
-  id: number;
+  id: string;
   brand: string;
   model: string;
   chemistry: string;
@@ -192,7 +192,7 @@ export interface SimulationResult {
 }
 
 export interface BatteryComparisonItem {
-  battery_id: number;
+  battery_id: string;
   brand: string;
   model: string;
   nominal_capacity_kwh: number;
@@ -209,8 +209,8 @@ export interface ApplianceItem {
 }
 
 export interface BatteryRequestItem {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   status: "SUBMITTED" | "UNDER_REVIEW" | "INFO_REQUESTED" | "APPROVED" | "REJECTED";
   admin_notes?: string;
   document_ref?: string;
@@ -234,7 +234,7 @@ export interface BatteryRequestItem {
 }
 
 export interface AgentAuditReport {
-  request_id: number;
+  request_id: string;
   citizen_name: string;
   steg_contract_no?: string;
   battery_selected: string;
@@ -255,7 +255,7 @@ export interface AgentAuditReport {
     curtailment_prevented_kwh: number;
   };
   better_alternative?: {
-    battery_id: number;
+    battery_id: string;
     name: string;
     self_sufficiency_pct: number;
     gain_pct: number;
@@ -267,7 +267,7 @@ export interface AgentRecommendation {
   has_recommendation: boolean;
   message?: string;
   recommended_battery?: {
-    battery_id: number;
+    battery_id: string;
     brand: string;
     model: string;
     usable_capacity_kwh: number;

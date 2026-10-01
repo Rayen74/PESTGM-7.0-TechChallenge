@@ -147,6 +147,7 @@ export async function loginUser(email: string, password: string): Promise<{ acce
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -282,7 +283,7 @@ export async function fetchCompatibleBatteries(): Promise<BatteryItem[]> {
   return res.json();
 }
 
-export async function simulateBattery(batteryId: number, initialSocPct = 50.0): Promise<SimulationResult> {
+export async function simulateBattery(batteryId: string, initialSocPct = 50.0): Promise<SimulationResult> {
   const res = await fetch(`${API_BASE}/api/battery/simulate`, {
     method: "POST",
     headers: {
@@ -298,7 +299,7 @@ export async function simulateBattery(batteryId: number, initialSocPct = 50.0): 
   return res.json();
 }
 
-export async function compareBatteries(batteryIds: number[]): Promise<{ comparisons: BatteryComparisonItem[] }> {
+export async function compareBatteries(batteryIds: string[]): Promise<{ comparisons: BatteryComparisonItem[] }> {
   const res = await fetch(`${API_BASE}/api/battery/compare`, {
     method: "POST",
     headers: {
@@ -312,10 +313,10 @@ export async function compareBatteries(batteryIds: number[]): Promise<{ comparis
 }
 
 export async function submitBatteryRequest(
-  batteryId: number,
+  batteryId: string,
   appliances: ApplianceItem[] = [],
   documentRef = "Dossier_Technique_STEG.pdf"
-): Promise<{ status: string; request_id: number; message: string }> {
+): Promise<{ status: string; request_id: string; message: string }> {
   const res = await fetch(`${API_BASE}/api/battery/request`, {
     method: "POST",
     headers: {
@@ -358,7 +359,7 @@ export async function fetchAdminRequests(statusFilter?: string): Promise<Battery
 }
 
 export async function submitAdminDecision(
-  requestId: number,
+  requestId: string,
   status: "APPROVED" | "REJECTED" | "INFO_REQUESTED" | "UNDER_REVIEW",
   adminNotes?: string
 ): Promise<{ status: string; message: string }> {
@@ -375,7 +376,7 @@ export async function submitAdminDecision(
 }
 
 export async function updateInstallationStage(
-  requestId: number,
+  requestId: string,
   data: {
     stage: string;
     installer_name?: string;
@@ -397,7 +398,7 @@ export async function updateInstallationStage(
   return res.json();
 }
 
-export async function auditRequestWithAgent(requestId: number): Promise<AgentAuditReport> {
+export async function auditRequestWithAgent(requestId: string): Promise<AgentAuditReport> {
   const res = await fetch(`${API_BASE}/api/battery/agent/audit-request/${requestId}`, {
     method: "POST",
     headers: {

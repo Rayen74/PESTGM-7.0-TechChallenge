@@ -102,7 +102,7 @@ def get_registered_tools_schemas() -> List[Dict[str, Any]]:
 
 
 @tool(name="get_installation", description="Récupère le profil PV complet du citoyen, caractéristiques onduleur, tension de bus et contrat STEG.")
-def tool_get_installation(conn: Any, user_id: int) -> Optional[Dict[str, Any]]:
+def tool_get_installation(conn: Any, user_id: str) -> Optional[Dict[str, Any]]:
     """
     Tool: get_installation
     Retrieves the user's PV profile, contract details, and electrical constraints.
@@ -214,7 +214,7 @@ def tool_compare_batteries(
     pv_profile: Dict[str, Any],
     pv_series: List[float],
     consumption_series: List[float],
-    battery_ids: Optional[List[int]] = None
+    battery_ids: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
     """
     Tool: compare_batteries

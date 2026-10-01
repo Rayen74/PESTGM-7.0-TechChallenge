@@ -4,18 +4,20 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { requestPasswordReset } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import {
   Sun,
   ArrowRight,
   ArrowLeft,
   Mail,
-  CheckCircle2,
   Clock,
   ShieldCheck,
 } from "lucide-react";
 
 function ForgotPasswordContent() {
   const searchParams = useSearchParams();
+  const { t, isRtl } = useI18n();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,6 @@ function ForgotPasswordContent() {
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const [fallbackResetUrl, setFallbackResetUrl] = useState<string | null>(null);
 
-  // If redirected with ?token=, redirect to /reset-password
   useEffect(() => {
     const token = searchParams.get("token");
     if (token) {
@@ -48,15 +49,22 @@ function ForgotPasswordContent() {
         setFallbackResetUrl((res as any).reset_url ?? null);
       }
     } catch (err: any) {
-      setError(err.message || "Une erreur est survenue lors de l'envoi de la demande.");
+      setError(err.message || t.auth.errorSendingReset);
     } finally {
       setLoading(false);
     }
   };
 
+  const BackIcon = isRtl ? ArrowRight : ArrowLeft;
+  const ForwardIcon = isRtl ? ArrowLeft : ArrowRight;
+
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-[#090d16] overflow-hidden py-12 px-4">
-      {/* Background decorations */}
+      {/* Top language selector */}
+      <div className={`absolute top-6 ${isRtl ? "left-6" : "right-6"} z-30`}>
+        <LanguageSelector />
+      </div>
+
       <div
         className="absolute inset-0 opacity-[0.03]"
         style={{
@@ -74,22 +82,18 @@ function ForgotPasswordContent() {
             <Sun className="w-8 h-8 text-slate-900" />
           </div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-amber-400 via-orange-300 to-amber-500 bg-clip-text text-transparent">
-            Récupération de Compte
+            {t.auth.forgotTitle}
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            STEG Solar Platform • Réinitialisation par email sécurisé (Port 465)
-          </p>
+          <p className="text-sm text-slate-500 mt-1">{t.auth.forgotSubtitle}</p>
         </div>
 
         {/* Main Card */}
         <div className="rounded-2xl border border-slate-700/60 bg-slate-900/70 backdrop-blur-xl p-8 shadow-2xl shadow-black/40">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-100">Mot de passe oublié</h2>
+              <h2 className="text-lg font-semibold text-slate-100">{t.auth.forgotHeading}</h2>
               <p className="text-xs text-slate-500">
-                {submitted
-                  ? "Vérifiez votre boîte de réception"
-                  : "Indiquez l'adresse email liée à votre compte"}
+                {submitted ? t.auth.forgotPromptSubmitted : t.auth.forgotPrompt}
               </p>
             </div>
             <ShieldCheck className="w-5 h-5 text-amber-400/80" />
@@ -102,32 +106,30 @@ function ForgotPasswordContent() {
           )}
 
           {submitted ? (
-            /* Generic message confirmation to prevent account enumeration */
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-start gap-3">
                 <Mail className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                 <div className="text-xs space-y-1.5 leading-relaxed">
                   <p className="font-semibold text-amber-200">
-                    If that email exists, a reset link has been sent.
+                    {t.auth.resetLinkSentTitle}
                   </p>
                   <p className="text-amber-400/80">
-                    Si l'adresse correspond à un compte actif, un lien de réinitialisation sécurisé à usage unique vous a été expédié par email (connexion chiffrée SSL/TLS port 465).
+                    {t.auth.resetLinkSentDesc}
                   </p>
                   <div className="flex items-center gap-1.5 text-[11px] text-amber-300/70 pt-1">
                     <Clock className="w-3.5 h-3.5" />
-                    <span>Validité du lien : <strong>4 minutes</strong></span>
+                    <span>{t.auth.linkValidityNotice}</span>
                   </div>
                 </div>
               </div>
 
-              {/* If email server failed (e.g. Gmail App Password required), display notice and direct fallback button */}
               {emailDelivered === false && (
                 <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-2.5">
                   <div className="flex items-center gap-2 font-semibold text-amber-300">
-                    <span>⚠️ Avis de délivrabilité SMTP</span>
+                    <span>{t.auth.smtpNoticeTitle}</span>
                   </div>
                   <p className="text-[12px] text-slate-300 leading-relaxed">
-                    Le serveur SMTP Google nécessite un <strong>Mot de passe d'application</strong> (App Password à 16 lettres) pour autoriser les envois port 465.
+                    {t.auth.smtpNoticeDesc}
                   </p>
                   {fallbackResetUrl && (
                     <div className="pt-1">
@@ -135,14 +137,14 @@ function ForgotPasswordContent() {
                         href={fallbackResetUrl}
                         className="w-full py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg flex items-center justify-center gap-1.5 text-xs transition-all shadow-md shadow-amber-500/20"
                       >
-                        <span>Ouvrir directement le lien de réinitialisation sécurisé</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <span>{t.auth.openResetDirectly}</span>
+                        <ForwardIcon className="w-3.5 h-3.5" />
                       </a>
                     </div>
                   )}
                   {debugInfo && (
                     <p className="text-[10px] font-mono text-slate-500 break-all pt-1">
-                      Détail : {debugInfo}
+                      Detail: {debugInfo}
                     </p>
                   )}
                 </div>
@@ -157,16 +159,16 @@ function ForgotPasswordContent() {
                   setDebugInfo(null);
                   setFallbackResetUrl(null);
                 }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors"
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors cursor-pointer"
               >
-                Envoyer un nouveau lien avec une autre adresse
+                {t.auth.sendAnotherLink}
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1.5" htmlFor="forgot-email">
-                  Adresse email du compte
+                  {t.auth.emailLabel}
                 </label>
                 <input
                   id="forgot-email"
@@ -175,22 +177,22 @@ function ForgotPasswordContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="nom@exemple.com"
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-100 placeholder-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-700 bg-slate-800/60 text-slate-100 placeholder-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all text-left rtl:text-right"
                 />
               </div>
 
               <div className="text-[11px] text-slate-500 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Limite de sécurité : 3 demandes max / 10 minutes</span>
+                <span>{t.auth.securityRateLimit}</span>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-900 font-semibold rounded-lg transition-all shadow-lg shadow-amber-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm cursor-pointer"
               >
-                {loading ? "Envoi en cours…" : "Envoyer le lien de réinitialisation"}
-                {!loading && <ArrowRight className="w-4 h-4" />}
+                {loading ? t.auth.forgotSubmitting : t.auth.forgotSubmit}
+                {!loading && <ForwardIcon className="w-4 h-4" />}
               </button>
             </form>
           )}
@@ -201,15 +203,15 @@ function ForgotPasswordContent() {
               href="/login"
               className="text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Retour à la connexion
+              <BackIcon className="w-3.5 h-3.5" />
+              {t.auth.backToLogin}
             </Link>
 
             <Link
               href="/login"
               className="text-amber-400 hover:text-amber-300 transition-colors"
             >
-              Se connecter
+              {t.auth.loginLink}
             </Link>
           </div>
         </div>
@@ -223,7 +225,7 @@ export default function ForgotPasswordPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-[#090d16] flex items-center justify-center text-slate-400 text-sm">
-          Chargement de la page de réinitialisation…
+          ...
         </div>
       }
     >

@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, logout } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useI18n } from "@/lib/i18n";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import {
   fetchBatteryCatalog,
   fetchMyRequests,
@@ -20,13 +22,13 @@ import {
   ClipboardList,
   Home,
   Loader2,
-  Send,
   Zap,
   CheckCircle2,
   Clock,
   XCircle,
   Info,
   ChevronRight,
+  ChevronLeft,
   BatteryCharging,
   ShieldCheck,
   Plus,
@@ -35,17 +37,15 @@ import {
   Check,
   X,
   Wrench,
-  Calendar,
   Bot,
   Sparkles,
 } from "lucide-react";
-
-
 
 type CitizenTab = "home" | "catalog" | "requests";
 
 export default function CitizenDashboard() {
   const router = useRouter();
+  const { t, formatNumber, formatDate, isRtl, translateStatus, translateStage } = useI18n();
   const [sess, setSess] = useState<{ email: string; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<CitizenTab>("home");
 
@@ -54,7 +54,7 @@ export default function CitizenDashboard() {
   const [myRequests, setMyRequests] = useState<BatteryRequestItem[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const [submitting, setSubmitting] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [profileReady, setProfileReady] = useState(false);
 
@@ -167,14 +167,13 @@ export default function CitizenDashboard() {
   // ---------- Appliance Modal State ----------
   const [selectedBattery, setSelectedBattery] = useState<BatteryItem | null>(null);
   const [appliances, setAppliances] = useState<ApplianceItem[]>([
-    { name: "Réfrigérateur", consumption_w: 150, quantity: 1, hours_per_day: 24 }
+    { name: t.citizen.presetFridge, consumption_w: 150, quantity: 1, hours_per_day: 24 }
   ]);
-
 
   const openApplianceModal = (battery: BatteryItem) => {
     setSelectedBattery(battery);
     setAppliances([
-      { name: "Réfrigérateur", consumption_w: 150, quantity: 1, hours_per_day: 24 }
+      { name: t.citizen.presetFridge, consumption_w: 150, quantity: 1, hours_per_day: 24 }
     ]);
   };
 
@@ -204,7 +203,6 @@ export default function CitizenDashboard() {
     });
   };
 
-  // Quick preset appliance adder
   const addPresetAppliance = (name: string, watts: number, hours: number) => {
     setAppliances((prev) => [
       ...prev,
@@ -225,10 +223,9 @@ export default function CitizenDashboard() {
             const { is_created, ...profileData } = profile as any;
             await savePVProfile(profileData);
           }
-        } catch { /* proceed anyway */ }
+        } catch { /* proceed */ }
       }
 
-      // Clean appliances
       const validAppliances = appliances
         .filter((a) => a.name.trim() !== "" && a.consumption_w > 0)
         .map((a) => ({
@@ -239,21 +236,19 @@ export default function CitizenDashboard() {
         }));
 
       await submitBatteryRequest(bId, validAppliances);
-      setToast("Demande soumise avec succès avec vos appareils !");
+      setToast(t.citizen.requestSuccessToast);
       setTimeout(() => setToast(null), 3500);
       closeApplianceModal();
       setActiveTab("requests");
       loadRequests();
     } catch (err: any) {
-      setToast(err.message || "Erreur lors de la soumission");
+      setToast(err.message || t.adminRequests.toastError);
       setTimeout(() => setToast(null), 4000);
     } finally {
       setSubmitting(null);
     }
   };
 
-
-  // ---------- Helpers ----------
   const statusIcon = (s: string) => {
     switch (s) {
       case "APPROVED": return <CheckCircle2 className="w-4 h-4 text-emerald-400" />;
@@ -272,27 +267,18 @@ export default function CitizenDashboard() {
     }
   };
 
-  const statusLabel = (s: string) => {
-    switch (s) {
-      case "SUBMITTED": return "En attente";
-      case "UNDER_REVIEW": return "En cours d'examen";
-      case "INFO_REQUESTED": return "Info demandée";
-      case "APPROVED": return "Approuvée";
-      case "REJECTED": return "Rejetée";
-      default: return s;
-    }
-  };
-
   const TABS: { key: CitizenTab; icon: React.ElementType; label: string }[] = [
-    { key: "home", icon: Home, label: "Accueil" },
-    { key: "catalog", icon: Battery, label: "Catalogue Batteries" },
-    { key: "requests", icon: ClipboardList, label: "Mes Demandes" },
+    { key: "home", icon: Home, label: t.citizen.tabHome },
+    { key: "catalog", icon: Battery, label: t.citizen.tabCatalog },
+    { key: "requests", icon: ClipboardList, label: t.citizen.tabRequests },
   ];
+
+  const ChevronIcon = isRtl ? ChevronLeft : ChevronRight;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100">
       {/* ---- Header ---- */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5">
+      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-3.5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
@@ -300,20 +286,21 @@ export default function CitizenDashboard() {
             </div>
             <div>
               <h1 className="text-base font-bold bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">
-                Espace Citoyen
+                {t.citizen.portalTitle}
               </h1>
-              <p className="text-[10px] text-slate-500">STEG Solar — Gestion Batterie</p>
+              <p className="text-[10px] text-slate-500">{t.citizen.portalSubtitle}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-500 hidden sm:block">{sess?.email}</span>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="text-xs text-slate-500 hidden sm:block font-mono">{sess?.email}</span>
+            <LanguageSelector compact />
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-700 transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
-              Quitter
+              <span>{t.common.logout}</span>
             </button>
           </div>
         </div>
@@ -321,22 +308,23 @@ export default function CitizenDashboard() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-16 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs shadow-2xl animate-bounce">
+        <div className={`fixed top-16 ${isRtl ? "left-6" : "right-6"} z-50 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs shadow-2xl animate-bounce`}>
           {toast}
         </div>
       )}
 
       {/* ---- Navigation ---- */}
       <nav className="border-b border-slate-800/60 bg-slate-900/30">
-        <div className="max-w-6xl mx-auto flex gap-1 px-6 overflow-x-auto">
+        <div className="max-w-6xl mx-auto flex gap-1 px-4 sm:px-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === tab.key
+              className={`flex items-center gap-2 px-5 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === tab.key
                   ? "border-emerald-400 text-emerald-400 bg-emerald-500/5"
                   : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/30"
-                }`}
+              }`}
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
@@ -346,7 +334,7 @@ export default function CitizenDashboard() {
       </nav>
 
       {/* ---- Content ---- */}
-      <main className="max-w-6xl w-full mx-auto p-6 flex-1">
+      <main className="max-w-6xl w-full mx-auto p-4 sm:p-6 flex-1">
         {/* ============ HOME ============ */}
         {activeTab === "home" && (
           <div className="space-y-8">
@@ -355,11 +343,10 @@ export default function CitizenDashboard() {
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-[80px]" />
               <div className="relative z-10">
                 <h2 className="text-2xl font-bold text-slate-100 mb-2">
-                  Bienvenue, {sess?.email?.split("@")[0] || "Citoyen"} 👋
+                  {t.citizen.welcomeTitle.replace("{name}", sess?.email?.split("@")[0] || "")}
                 </h2>
-                <p className="text-sm text-slate-400 max-w-lg">
-                  Gérez votre installation solaire et soumettez vos demandes de batterie.
-                  L&apos;administrateur STEG examinera chaque demande et vous notifiera du résultat.
+                <p className="text-sm text-slate-400 max-w-lg leading-relaxed">
+                  {t.citizen.welcomeSubtitle}
                 </p>
               </div>
             </div>
@@ -368,43 +355,43 @@ export default function CitizenDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button
                 onClick={() => setActiveTab("catalog")}
-                className="group rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/60 p-6 text-left transition-all cursor-pointer"
+                className="group rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/60 p-6 text-left rtl:text-right transition-all cursor-pointer"
               >
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-4 group-hover:bg-emerald-500/20 transition-colors">
                   <BatteryCharging className="w-5 h-5 text-emerald-400" />
                 </div>
-                <h3 className="font-semibold text-slate-200 mb-1 flex items-center gap-2">
-                  Catalogue Batteries
-                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                <h3 className="font-semibold text-slate-200 mb-1 flex items-center justify-between">
+                  <span>{t.citizen.cardCatalogTitle}</span>
+                  <ChevronIcon className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 transition-colors" />
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Parcourez les batteries certifiées STEG disponibles en Tunisie
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {t.citizen.cardCatalogDesc}
                 </p>
               </button>
 
               <button
                 onClick={() => setActiveTab("requests")}
-                className="group rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/60 p-6 text-left transition-all cursor-pointer"
+                className="group rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/60 p-6 text-left rtl:text-right transition-all cursor-pointer"
               >
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4 group-hover:bg-blue-500/20 transition-colors">
                   <ClipboardList className="w-5 h-5 text-blue-400" />
                 </div>
-                <h3 className="font-semibold text-slate-200 mb-1 flex items-center gap-2">
-                  Mes Demandes
-                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-blue-400 transition-colors" />
+                <h3 className="font-semibold text-slate-200 mb-1 flex items-center justify-between">
+                  <span>{t.citizen.cardRequestsTitle}</span>
+                  <ChevronIcon className="w-4 h-4 text-slate-600 group-hover:text-blue-400 transition-colors" />
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Suivez l&apos;état de vos demandes d&apos;installation de batterie
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {t.citizen.cardRequestsDesc}
                 </p>
               </button>
 
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 text-left rtl:text-right">
                 <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center mb-4">
                   <ShieldCheck className="w-5 h-5 text-amber-400" />
                 </div>
-                <h3 className="font-semibold text-slate-200 mb-1">Certifié STEG</h3>
-                <p className="text-xs text-slate-500">
-                  Toutes les batteries du catalogue sont conformes aux normes STEG Tunisie
+                <h3 className="font-semibold text-slate-200 mb-1">{t.citizen.cardCertifiedTitle}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {t.citizen.cardCertifiedDesc}
                 </p>
               </div>
             </div>
@@ -412,17 +399,17 @@ export default function CitizenDashboard() {
             {/* Info panel */}
             <div className="rounded-xl border border-slate-800/60 bg-slate-900/30 p-6">
               <h3 className="text-sm font-semibold text-slate-300 mb-3">
-                Comment ça marche ?
+                {t.citizen.howItWorksTitle}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[
-                  { step: "1", title: "Choisir une batterie", desc: "Consultez le catalogue et sélectionnez la batterie adaptée à votre installation" },
-                  { step: "2", title: "Soumettre la demande", desc: "Cliquez sur « Demander » pour soumettre votre demande à l'administrateur STEG" },
-                  { step: "3", title: "Suivi & Installation", desc: "Suivez l'état de votre demande et préparez l'installation après approbation" },
+                  { step: "1", title: t.citizen.step1Title, desc: t.citizen.step1Desc },
+                  { step: "2", title: t.citizen.step2Title, desc: t.citizen.step2Desc },
+                  { step: "3", title: t.citizen.step3Title, desc: t.citizen.step3Desc },
                 ].map((item) => (
                   <div key={item.step} className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-xs shrink-0">
-                      {item.step}
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-xs shrink-0 font-mono">
+                      {formatNumber(Number(item.step))}
                     </div>
                     <div>
                       <h4 className="text-xs font-semibold text-slate-200 mb-0.5">{item.title}</h4>
@@ -439,9 +426,9 @@ export default function CitizenDashboard() {
         {activeTab === "catalog" && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-100">Catalogue des Batteries</h2>
+              <h2 className="text-lg font-bold text-slate-100">{t.citizen.catalogTitle}</h2>
               <p className="text-xs text-slate-500 mt-1">
-                Sélectionnez une batterie certifiée STEG et soumettez votre demande d&apos;installation
+                {t.citizen.catalogSubtitle}
               </p>
             </div>
 
@@ -453,8 +440,8 @@ export default function CitizenDashboard() {
                   <Bot className="w-4 h-4 text-indigo-400 absolute inset-0 m-auto" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-indigo-300">Conseiller IA STEG en cours d&apos;analyse...</p>
-                  <p className="text-[11px] text-slate-500">Exécution des outils : compatibilité, prédiction solaire, simulation de dispatch.</p>
+                  <p className="text-xs font-semibold text-indigo-300">{t.citizen.aiAdvisorAnalyzing}</p>
+                  <p className="text-[11px] text-slate-500">{t.citizen.aiAdvisorDesc}</p>
                 </div>
               </div>
             ) : aiRecommendation?.has_recommendation && aiRecommendation.recommended_battery ? (
@@ -466,13 +453,13 @@ export default function CitizenDashboard() {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                        Recommandation IA
+                        {t.citizen.aiRecTitle}
                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
                           <Sparkles className="w-2.5 h-2.5" />
-                          Agent IA
+                          {t.citizen.aiRecAgentTag}
                         </span>
                       </h3>
-                      <p className="text-[11px] text-slate-500">Batterie optimale pour votre installation PV et appareils</p>
+                      <p className="text-[11px] text-slate-500">{t.citizen.aiRecSubtitle}</p>
                     </div>
                   </div>
                 </div>
@@ -483,7 +470,9 @@ export default function CitizenDashboard() {
                       {aiRecommendation.recommended_battery.brand} {aiRecommendation.recommended_battery.model}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {aiRecommendation.recommended_battery.usable_capacity_kwh} kWh · {aiRecommendation.recommended_battery.voltage_type === "HV" ? "Haute Tension" : "48V"} · Autonomie {aiRecommendation.recommended_battery.self_sufficiency_pct?.toFixed(1)}%
+                      {formatNumber(aiRecommendation.recommended_battery.usable_capacity_kwh, { maximumFractionDigits: 1 })} kWh ·{" "}
+                      {aiRecommendation.recommended_battery.voltage_type === "HV" ? t.citizen.highVoltage : t.citizen.lowVoltage48v} ·{" "}
+                      {t.adminRequests.autonomy} {formatNumber(aiRecommendation.recommended_battery.self_sufficiency_pct || 0, { maximumFractionDigits: 1 })}%
                     </p>
 
                     {aiRecommendation.reasoning && (
@@ -500,20 +489,20 @@ export default function CitizenDashboard() {
 
                   <button
                     onClick={() => {
-                      const bat = batteries.find(b => b.id === aiRecommendation.recommended_battery!.battery_id);
+                      const bat = batteries.find((b) => b.id === aiRecommendation.recommended_battery!.battery_id);
                       if (bat) openApplianceModal(bat);
                     }}
                     className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 hover:brightness-110 transition-all cursor-pointer"
                   >
                     <Zap className="w-4 h-4" />
-                    Choisir cette batterie
+                    {t.citizen.chooseThisBattery}
                   </button>
                 </div>
               </div>
             ) : aiRecommendation && !aiRecommendation.has_recommendation ? (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-center gap-3 text-xs text-amber-300">
                 <Bot className="w-5 h-5 shrink-0" />
-                <span>{aiRecommendation.message || "Aucune batterie compatible trouvée pour votre installation actuelle."}</span>
+                <span>{aiRecommendation.message || t.citizen.noCompatibleBattery}</span>
               </div>
             ) : null}
 
@@ -524,9 +513,9 @@ export default function CitizenDashboard() {
             ) : batteries.length === 0 ? (
               <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center">
                 <Battery className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                <p className="text-sm text-slate-500">Aucune batterie disponible pour le moment</p>
+                <p className="text-sm text-slate-500">{t.citizen.noBatteriesInCatalog}</p>
                 <p className="text-xs text-slate-600 mt-1">
-                  Le serveur API doit être lancé pour charger le catalogue.
+                  {t.citizen.noBatteriesApiHint}
                 </p>
               </div>
             ) : (
@@ -541,7 +530,7 @@ export default function CitizenDashboard() {
                       <span className="text-xs font-medium text-slate-500">{bat.brand}</span>
                       {bat.steg_certified === 1 && (
                         <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
-                          <ShieldCheck className="w-3 h-3" /> Certifié
+                          <ShieldCheck className="w-3 h-3" /> {t.common.certified}
                         </span>
                       )}
                     </div>
@@ -551,28 +540,38 @@ export default function CitizenDashboard() {
                     {/* Specs grid */}
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-4">
                       <div>
-                        <span className="text-slate-500">Capacité</span>
-                        <p className="text-slate-300 font-medium">{bat.usable_capacity_kwh} kWh</p>
+                        <span className="text-slate-500">{t.citizen.specCapacity}</span>
+                        <p className="text-slate-300 font-medium font-mono">
+                          {formatNumber(bat.usable_capacity_kwh, { maximumFractionDigits: 1 })} kWh
+                        </p>
                       </div>
                       <div>
-                        <span className="text-slate-500">Chimie</span>
+                        <span className="text-slate-500">{t.citizen.specChemistry}</span>
                         <p className="text-slate-300 font-medium">{bat.chemistry}</p>
                       </div>
                       <div>
-                        <span className="text-slate-500">Tension</span>
-                        <p className="text-slate-300 font-medium">{bat.voltage_type === "HV" ? "Haute Tension" : "48V"}</p>
+                        <span className="text-slate-500">{t.citizen.specVoltage}</span>
+                        <p className="text-slate-300 font-medium">
+                          {bat.voltage_type === "HV" ? t.citizen.highVoltage : t.citizen.lowVoltage48v}
+                        </p>
                       </div>
                       <div>
-                        <span className="text-slate-500">Efficacité</span>
-                        <p className="text-slate-300 font-medium">{Math.round(bat.round_trip_eff * 100)}%</p>
+                        <span className="text-slate-500">{t.citizen.specEfficiency}</span>
+                        <p className="text-slate-300 font-medium font-mono">
+                          {formatNumber(Math.round(bat.round_trip_eff * 100))}%
+                        </p>
                       </div>
                       <div>
-                        <span className="text-slate-500">Charge max</span>
-                        <p className="text-slate-300 font-medium">{bat.max_charge_kw} kW</p>
+                        <span className="text-slate-500">{t.citizen.specMaxCharge}</span>
+                        <p className="text-slate-300 font-medium font-mono">
+                          {formatNumber(bat.max_charge_kw, { maximumFractionDigits: 1 })} kW
+                        </p>
                       </div>
                       <div>
-                        <span className="text-slate-500">Décharge max</span>
-                        <p className="text-slate-300 font-medium">{bat.max_discharge_kw} kW</p>
+                        <span className="text-slate-500">{t.citizen.specMaxDischarge}</span>
+                        <p className="text-slate-300 font-medium font-mono">
+                          {formatNumber(bat.max_discharge_kw, { maximumFractionDigits: 1 })} kW
+                        </p>
                       </div>
                     </div>
 
@@ -583,7 +582,7 @@ export default function CitizenDashboard() {
                       className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       <Zap className="w-4 h-4" />
-                      Demander cette batterie
+                      {t.citizen.requestBatteryButton}
                     </button>
                   </div>
                 ))}
@@ -597,16 +596,16 @@ export default function CitizenDashboard() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-100">Mes Demandes</h2>
+                <h2 className="text-lg font-bold text-slate-100">{t.citizen.myRequestsTitle}</h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Historique et état de vos demandes d&apos;installation de batterie
+                  {t.citizen.myRequestsSubtitle}
                 </p>
               </div>
               <button
                 onClick={loadRequests}
                 className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700 text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
               >
-                Actualiser
+                {t.citizen.refreshBtn}
               </button>
             </div>
 
@@ -617,12 +616,12 @@ export default function CitizenDashboard() {
             ) : myRequests.length === 0 ? (
               <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-12 text-center">
                 <ClipboardList className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-                <p className="text-sm text-slate-500">Vous n&apos;avez pas encore soumis de demande</p>
+                <p className="text-sm text-slate-500">{t.citizen.noRequestsYet}</p>
                 <button
                   onClick={() => setActiveTab("catalog")}
                   className="mt-4 px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition-all cursor-pointer"
                 >
-                  Voir le catalogue
+                  {t.citizen.browseCatalogBtn}
                 </button>
               </div>
             ) : (
@@ -641,7 +640,7 @@ export default function CitizenDashboard() {
                             {req.battery_brand} {req.battery_model}
                           </h4>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            {req.usable_capacity_kwh} kWh · Demande #{req.id}
+                            {formatNumber(req.usable_capacity_kwh, { maximumFractionDigits: 1 })} kWh · {t.citizen.requestNumber.replace("{id}", req.id)}
                           </p>
                         </div>
                       </div>
@@ -649,10 +648,10 @@ export default function CitizenDashboard() {
                       {/* Right: status badge + date */}
                       <div className="flex items-center gap-3 shrink-0">
                         <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(req.status)}`}>
-                          {statusLabel(req.status)}
+                          {translateStatus(req.status)}
                         </span>
                         <span className="text-xs text-slate-600">
-                          {new Date(req.created_at).toLocaleDateString("fr-TN")}
+                          {formatDate(req.created_at)}
                         </span>
                       </div>
                     </div>
@@ -662,7 +661,7 @@ export default function CitizenDashboard() {
                       <div className="pt-2 border-t border-slate-800/60 mt-2">
                         <p className="text-[11px] font-semibold text-slate-400 mb-1.5 flex items-center gap-1.5">
                           <Tv className="w-3.5 h-3.5 text-teal-400" />
-                          Appareils prévus ({req.appliances.length}) :
+                          {t.citizen.plannedAppliances.replace("{count}", formatNumber(req.appliances.length))}
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {req.appliances.map((app, i) => (
@@ -671,8 +670,8 @@ export default function CitizenDashboard() {
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300"
                             >
                               <span className="font-medium text-emerald-400">{app.name}</span>
-                              <span className="text-[11px] text-slate-500">
-                                ({app.consumption_w}W{app.quantity && app.quantity > 1 ? ` × ${app.quantity}` : ""}{app.hours_per_day ? ` · ${app.hours_per_day}h/j` : ""})
+                              <span className="text-[11px] text-slate-500 font-mono">
+                                ({formatNumber(app.consumption_w)}W{app.quantity && app.quantity > 1 ? ` × ${formatNumber(app.quantity)}` : ""}{app.hours_per_day ? ` · ${formatNumber(app.hours_per_day)}h/j` : ""})
                               </span>
                             </span>
                           ))}
@@ -686,21 +685,21 @@ export default function CitizenDashboard() {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
                             <Wrench className="w-4 h-4 text-emerald-400" />
-                            Suivi d&apos;installation STEG
+                            {t.citizen.trackingTitle}
                           </span>
                           <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                            {req.tracking_stage || "APPROVED"}
+                            {translateStage(req.tracking_stage || "APPROVED")}
                           </span>
                         </div>
 
                         {/* 5-Step Visual Stepper */}
                         {(() => {
                           const stages = [
-                            { key: "APPROVED", label: "Approuvé" },
-                            { key: "INSTALLATION_SCHEDULED", label: "Planifié" },
-                            { key: "INSTALLING", label: "Installation" },
-                            { key: "COMMISSIONING", label: "Mise en service" },
-                            { key: "ACTIVE", label: "Raccordé Actif" },
+                            { key: "APPROVED", label: t.adminRequests.stageApproved },
+                            { key: "INSTALLATION_SCHEDULED", label: t.adminRequests.stageScheduled },
+                            { key: "INSTALLING", label: t.adminRequests.stageInstalling },
+                            { key: "COMMISSIONING", label: t.adminRequests.stageCommissioning },
+                            { key: "ACTIVE", label: t.adminRequests.stageActive },
                           ];
                           const curStage = req.tracking_stage || "APPROVED";
                           const curIdx = stages.findIndex((s) => s.key === curStage);
@@ -714,26 +713,28 @@ export default function CitizenDashboard() {
                                 return (
                                   <div key={st.key} className="flex flex-col items-center text-center">
                                     <div
-                                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${isCurrent
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                                        isCurrent
                                           ? "bg-emerald-500 text-slate-950 ring-4 ring-emerald-500/20"
                                           : isPassed
-                                            ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
-                                            : "bg-slate-800/60 border border-slate-700 text-slate-600"
-                                        }`}
+                                          ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
+                                          : "bg-slate-800/60 border border-slate-700 text-slate-600"
+                                      }`}
                                     >
                                       {isPassed ? (
                                         <Check className="w-3.5 h-3.5" />
                                       ) : (
-                                        <span>{sIdx + 1}</span>
+                                        <span>{formatNumber(sIdx + 1)}</span>
                                       )}
                                     </div>
                                     <span
-                                      className={`text-[10px] mt-1 font-medium leading-tight ${isCurrent
+                                      className={`text-[10px] mt-1 font-medium leading-tight ${
+                                        isCurrent
                                           ? "text-emerald-300 font-semibold"
                                           : isPassed
-                                            ? "text-slate-300"
-                                            : "text-slate-600"
-                                        }`}
+                                          ? "text-slate-300"
+                                          : "text-slate-600"
+                                      }`}
                                     >
                                       {st.label}
                                     </span>
@@ -749,19 +750,19 @@ export default function CitizenDashboard() {
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-slate-400 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
                             {req.installer_name && (
                               <div>
-                                <span className="text-slate-500 block">Installateur :</span>
+                                <span className="text-slate-500 block">{t.citizen.installerLabel}</span>
                                 <span className="text-slate-200 font-medium">{req.installer_name}</span>
                               </div>
                             )}
                             {req.scheduled_date && (
                               <div>
-                                <span className="text-slate-500 block">Date prévue :</span>
-                                <span className="text-slate-200 font-medium">{req.scheduled_date}</span>
+                                <span className="text-slate-500 block">{t.citizen.scheduledDateLabel}</span>
+                                <span className="text-slate-200 font-medium">{formatDate(req.scheduled_date)}</span>
                               </div>
                             )}
                             {req.steg_meter_ref && (
                               <div>
-                                <span className="text-slate-500 block">Compteur STEG :</span>
+                                <span className="text-slate-500 block">{t.citizen.stegMeterLabel}</span>
                                 <span className="text-emerald-400 font-mono">{req.steg_meter_ref}</span>
                               </div>
                             )}
@@ -771,7 +772,6 @@ export default function CitizenDashboard() {
                     )}
                   </div>
                 ))}
-
               </div>
             )}
           </div>
@@ -786,13 +786,18 @@ export default function CitizenDashboard() {
             <div className="flex items-start justify-between pb-4 border-b border-slate-800">
               <div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  Nouvelle Demande
+                  {t.citizen.newRequestModalTitle}
                 </span>
                 <h3 className="text-lg font-bold text-slate-100 mt-0.5">
-                  Spécifier les appareils pour {selectedBattery.brand} {selectedBattery.model}
+                  {t.citizen.newRequestModalHeading
+                    .replace("{brand}", selectedBattery.brand)
+                    .replace("{model}", selectedBattery.model)}
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Indiquez les appareils électriques à alimenter avec cette batterie ({selectedBattery.usable_capacity_kwh} kWh).
+                  {t.citizen.newRequestModalDesc.replace(
+                    "{capacity}",
+                    formatNumber(selectedBattery.usable_capacity_kwh, { maximumFractionDigits: 1 })
+                  )}
                 </p>
               </div>
               <button
@@ -806,17 +811,17 @@ export default function CitizenDashboard() {
             {/* Quick Presets */}
             <div className="py-3 border-b border-slate-800/80">
               <span className="text-[11px] text-slate-400 font-medium block mb-2">
-                Ajout rapide d&apos;appareils courants :
+                {t.citizen.quickPresetsTitle}
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { name: "Réfrigérateur", w: 150, h: 24 },
-                  { name: "Climatiseur 12000 BTU", w: 1200, h: 6 },
-                  { name: "Téléviseur LED", w: 100, h: 5 },
-                  { name: "Éclairage LED", w: 60, h: 6 },
-                  { name: "Machine à laver", w: 2000, h: 1.5 },
-                  { name: "Routeur Wi-Fi", w: 20, h: 24 },
-                  { name: "Pompe à eau", w: 750, h: 2 },
+                  { name: t.citizen.presetFridge, w: 150, h: 24 },
+                  { name: t.citizen.presetAC, w: 1200, h: 6 },
+                  { name: t.citizen.presetTv, w: 100, h: 5 },
+                  { name: t.citizen.presetLed, w: 60, h: 6 },
+                  { name: t.citizen.presetWashing, w: 2000, h: 1.5 },
+                  { name: t.citizen.presetRouter, w: 20, h: 24 },
+                  { name: t.citizen.presetPump, w: 750, h: 2 },
                 ].map((item, idx) => (
                   <button
                     key={idx}
@@ -824,7 +829,7 @@ export default function CitizenDashboard() {
                     onClick={() => addPresetAppliance(item.name, item.w, item.h)}
                     className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800/70 hover:bg-emerald-500/20 hover:text-emerald-300 border border-slate-700/60 text-slate-300 transition-all cursor-pointer"
                   >
-                    + {item.name} ({item.w}W)
+                    + {item.name} ({formatNumber(item.w)}W)
                   </button>
                 ))}
               </div>
@@ -834,7 +839,7 @@ export default function CitizenDashboard() {
             <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-1">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-semibold text-slate-300">
-                  Liste des appareils ({appliances.length}) :
+                  {t.citizen.appliancesListTitle.replace("{count}", formatNumber(appliances.length))}
                 </span>
                 <button
                   type="button"
@@ -842,7 +847,7 @@ export default function CitizenDashboard() {
                   className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Ajouter un appareil
+                  {t.citizen.addApplianceBtn}
                 </button>
               </div>
 
@@ -851,24 +856,22 @@ export default function CitizenDashboard() {
                   key={idx}
                   className="p-3 rounded-xl bg-slate-900/80 border border-slate-800/90 flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
                 >
-                  {/* Name */}
                   <div className="flex-1">
                     <label className="text-[10px] text-slate-400 block mb-1">
-                      Appareil {idx + 1}
+                      {t.citizen.applianceItemLabel.replace("{num}", formatNumber(idx + 1))}
                     </label>
                     <input
                       type="text"
-                      placeholder="Ex: Réfrigérateur, Climatiseur..."
+                      placeholder={t.citizen.applianceNamePlaceholder}
                       value={app.name}
                       onChange={(e) => updateApplianceRow(idx, "name", e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 text-left rtl:text-right"
                     />
                   </div>
 
-                  {/* Consommation */}
                   <div className="w-full sm:w-28">
                     <label className="text-[10px] text-slate-400 block mb-1">
-                      Puissance (Watts)
+                      {t.citizen.powerWattsLabel}
                     </label>
                     <input
                       type="number"
@@ -876,28 +879,26 @@ export default function CitizenDashboard() {
                       placeholder="150"
                       value={app.consumption_w || ""}
                       onChange={(e) => updateApplianceRow(idx, "consumption_w", parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono text-left rtl:text-right"
                     />
                   </div>
 
-                  {/* Quantité */}
                   <div className="w-full sm:w-20">
                     <label className="text-[10px] text-slate-400 block mb-1">
-                      Quantité
+                      {t.citizen.quantityLabel}
                     </label>
                     <input
                       type="number"
                       min="1"
                       value={app.quantity || 1}
                       onChange={(e) => updateApplianceRow(idx, "quantity", parseInt(e.target.value) || 1)}
-                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono text-left rtl:text-right"
                     />
                   </div>
 
-                  {/* Heures par jour */}
                   <div className="w-full sm:w-24">
                     <label className="text-[10px] text-slate-400 block mb-1">
-                      Heures / jour
+                      {t.citizen.hoursPerDayLabel}
                     </label>
                     <input
                       type="number"
@@ -907,18 +908,17 @@ export default function CitizenDashboard() {
                       value={app.hours_per_day || ""}
                       placeholder="h/jour"
                       onChange={(e) => updateApplianceRow(idx, "hours_per_day", parseFloat(e.target.value) || undefined)}
-                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono text-left rtl:text-right"
                     />
                   </div>
 
-                  {/* Remove row button */}
                   <div className="sm:self-end pb-0.5">
                     <button
                       type="button"
                       onClick={() => removeApplianceRow(idx)}
                       disabled={appliances.length <= 1}
                       className="p-2 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-transparent transition-colors cursor-pointer"
-                      title="Supprimer"
+                      title={t.citizen.deleteRowTitle}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -929,13 +929,17 @@ export default function CitizenDashboard() {
               {/* Total estimation */}
               <div className="mt-4 p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/20 flex items-center justify-between text-xs">
                 <span className="text-slate-400">
-                  Consommation totale estimée :
+                  {t.citizen.totalEstimatedConsumption}
                 </span>
-                <span className="font-semibold text-emerald-400">
-                  {appliances
-                    .reduce((acc, a) => acc + (a.consumption_w * (a.quantity || 1) * (a.hours_per_day || 1)) / 1000, 0)
-                    .toFixed(2)}{" "}
-                  kWh / jour
+                <span className="font-semibold text-emerald-400 font-mono">
+                  {formatNumber(
+                    appliances.reduce(
+                      (acc, a) => acc + (a.consumption_w * (a.quantity || 1) * (a.hours_per_day || 1)) / 1000,
+                      0
+                    ),
+                    { maximumFractionDigits: 2 }
+                  )}{" "}
+                  {t.citizen.kwhPerDay}
                 </span>
               </div>
             </div>
@@ -947,7 +951,7 @@ export default function CitizenDashboard() {
                 onClick={closeApplianceModal}
                 className="px-4 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                Annuler
+                {t.common.cancel}
               </button>
 
               <button
@@ -961,7 +965,7 @@ export default function CitizenDashboard() {
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                {submitting === selectedBattery.id ? "Soumission en cours…" : "Confirmer et Soumettre la Demande"}
+                {submitting === selectedBattery.id ? t.citizen.submittingApplicationBtn : t.citizen.submitApplicationBtn}
               </button>
             </div>
           </div>
@@ -971,10 +975,9 @@ export default function CitizenDashboard() {
       {/* Footer */}
       <footer className="border-t border-slate-800/60 py-4 px-6">
         <p className="text-center text-[10px] text-slate-600">
-          © 2026 STEG Solar Platform — Espace Citoyen
+          {t.citizen.footerCopyright}
         </p>
       </footer>
     </div>
   );
 }
-

@@ -26,21 +26,26 @@ DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") or "
 USE_POSTGRES = False
 pg_pool = None
 
-if DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"):
+if DATABASE_URL:
+    if not (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        raise RuntimeError("DATABASE_URL must be a PostgreSQL connection URL.")
     try:
         import psycopg2
         from psycopg2 import pool
-        from psycopg2.extras import RealDictCursor
+        from psycopg2.extras import RealDictCursor, register_uuid
+        register_uuid()
         USE_POSTGRES = True
-        # Initialize connection pool for Neon
+        # Initialize the PostgreSQL connection pool.
         pg_pool = psycopg2.pool.SimpleConnectionPool(
             minconn=1,
             maxconn=10,
             dsn=DATABASE_URL
         )
     except Exception as e:
-        print(f"[Database] Notice: PostgreSQL configuration detected but pool initialization failed ({e}). Falling back to SQLite.")
-        USE_POSTGRES = False
+        raise RuntimeError(
+            "DATABASE_URL is configured, but PostgreSQL could not be initialized. "
+            "Check that PostgreSQL is running, the database exists, and the credentials are correct."
+        ) from e
 
 from src import config
 SQLITE_DB_PATH = config.DATA_PROCESSED_DIR / "battery_module.db"
@@ -112,7 +117,7 @@ def query_one(conn, sql: str, params: tuple = ()) -> Dict[str, Any] | None:
         return dict(row) if row else None
 
 
-def execute_insert_returning_id(conn, sql: str, params: tuple = (), id_column: str = "id") -> int:
+def execute_insert_returning_id(conn, sql: str, params: tuple = (), id_column: str = "id") -> Any:
     """
     Executes an INSERT statement and returns the newly generated ID.
     Handles Postgres RETURNING id as well as SQLite cursor.lastrowid.
@@ -149,6 +154,80 @@ def execute_write(conn, sql: str, params: tuple = ()) -> int:
         return cur.rowcount
 
 
+def _migrate_postgres_integer_ids(cursor) -> None:
+    """Convert the legacy integer identity columns to UUIDs without dropping rows."""
+    cursor.execute("""
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'id'
+    """)
+    row = cursor.fetchone()
+    if not row or row[0] not in {"smallint", "integer", "bigint"}:
+        return
+
+    # Add stable UUID mappings for every existing primary/foreign key row.
+    cursor.execute("ALTER TABLE users ADD COLUMN id_uuid UUID DEFAULT gen_random_uuid();")
+    cursor.execute("ALTER TABLE pv_profiles ADD COLUMN id_uuid UUID DEFAULT gen_random_uuid();")
+    cursor.execute("ALTER TABLE pv_profiles ADD COLUMN user_id_uuid UUID;")
+    cursor.execute("ALTER TABLE battery_catalog ADD COLUMN id_uuid UUID DEFAULT gen_random_uuid();")
+    cursor.execute("ALTER TABLE battery_requests ADD COLUMN id_uuid UUID DEFAULT gen_random_uuid();")
+    cursor.execute("ALTER TABLE battery_requests ADD COLUMN user_id_uuid UUID;")
+    cursor.execute("ALTER TABLE battery_requests ADD COLUMN battery_id_uuid UUID;")
+    cursor.execute("ALTER TABLE installation_tracking ADD COLUMN id_uuid UUID DEFAULT gen_random_uuid();")
+    cursor.execute("ALTER TABLE installation_tracking ADD COLUMN request_id_uuid UUID;")
+    cursor.execute("ALTER TABLE email_tokens ADD COLUMN user_id_uuid UUID;")
+
+    cursor.execute("UPDATE pv_profiles p SET user_id_uuid = u.id_uuid FROM users u WHERE p.user_id = u.id;")
+    cursor.execute("UPDATE battery_requests r SET user_id_uuid = u.id_uuid FROM users u WHERE r.user_id = u.id;")
+    cursor.execute("UPDATE battery_requests r SET battery_id_uuid = b.id_uuid FROM battery_catalog b WHERE r.battery_id = b.id;")
+    cursor.execute("UPDATE installation_tracking t SET request_id_uuid = r.id_uuid FROM battery_requests r WHERE t.request_id = r.id;")
+    cursor.execute("UPDATE email_tokens e SET user_id_uuid = u.id_uuid FROM users u WHERE e.user_id = u.id;")
+
+    # Remove legacy constraints before replacing the integer columns.
+    for table, constraints in {
+        "pv_profiles": ["pv_profiles_pkey", "pv_profiles_user_id_key", "pv_profiles_user_id_fkey"],
+        "battery_requests": ["battery_requests_pkey", "battery_requests_user_id_fkey", "battery_requests_battery_id_fkey"],
+        "installation_tracking": ["installation_tracking_pkey", "installation_tracking_request_id_key", "installation_tracking_request_id_fkey"],
+        "email_tokens": ["email_tokens_user_id_fkey"],
+        "users": ["users_pkey"],
+        "battery_catalog": ["battery_catalog_pkey"],
+    }.items():
+        for constraint in constraints:
+            cursor.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint} CASCADE;")
+
+    cursor.execute("ALTER TABLE pv_profiles DROP COLUMN id, DROP COLUMN user_id;")
+    cursor.execute("ALTER TABLE pv_profiles RENAME COLUMN id_uuid TO id;")
+    cursor.execute("ALTER TABLE pv_profiles RENAME COLUMN user_id_uuid TO user_id;")
+    cursor.execute("ALTER TABLE battery_catalog DROP COLUMN id;")
+    cursor.execute("ALTER TABLE battery_catalog RENAME COLUMN id_uuid TO id;")
+    cursor.execute("ALTER TABLE battery_requests DROP COLUMN id, DROP COLUMN user_id, DROP COLUMN battery_id;")
+    cursor.execute("ALTER TABLE battery_requests RENAME COLUMN id_uuid TO id;")
+    cursor.execute("ALTER TABLE battery_requests RENAME COLUMN user_id_uuid TO user_id;")
+    cursor.execute("ALTER TABLE battery_requests RENAME COLUMN battery_id_uuid TO battery_id;")
+    cursor.execute("ALTER TABLE installation_tracking DROP COLUMN id, DROP COLUMN request_id;")
+    cursor.execute("ALTER TABLE installation_tracking RENAME COLUMN id_uuid TO id;")
+    cursor.execute("ALTER TABLE installation_tracking RENAME COLUMN request_id_uuid TO request_id;")
+    cursor.execute("ALTER TABLE email_tokens DROP COLUMN user_id;")
+    cursor.execute("ALTER TABLE email_tokens RENAME COLUMN user_id_uuid TO user_id;")
+    cursor.execute("ALTER TABLE users DROP COLUMN id;")
+    cursor.execute("ALTER TABLE users RENAME COLUMN id_uuid TO id;")
+
+    cursor.execute("ALTER TABLE users ADD PRIMARY KEY (id);")
+    cursor.execute("ALTER TABLE pv_profiles ADD PRIMARY KEY (id);")
+    cursor.execute("ALTER TABLE pv_profiles ADD CONSTRAINT pv_profiles_user_id_key UNIQUE (user_id);")
+    cursor.execute("ALTER TABLE pv_profiles ADD CONSTRAINT pv_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;")
+    cursor.execute("ALTER TABLE battery_catalog ADD PRIMARY KEY (id);")
+    cursor.execute("ALTER TABLE battery_requests ADD PRIMARY KEY (id);")
+    cursor.execute("ALTER TABLE battery_requests ADD CONSTRAINT battery_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;")
+    cursor.execute("ALTER TABLE battery_requests ADD CONSTRAINT battery_requests_battery_id_fkey FOREIGN KEY (battery_id) REFERENCES battery_catalog(id);")
+    cursor.execute("ALTER TABLE installation_tracking ADD PRIMARY KEY (id);")
+    cursor.execute("ALTER TABLE installation_tracking ADD CONSTRAINT installation_tracking_request_id_key UNIQUE (request_id);")
+    cursor.execute("ALTER TABLE installation_tracking ADD CONSTRAINT installation_tracking_request_id_fkey FOREIGN KEY (request_id) REFERENCES battery_requests(id) ON DELETE CASCADE;")
+    cursor.execute("ALTER TABLE email_tokens ADD CONSTRAINT email_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_battery_requests_user_id ON battery_requests(user_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens(user_id);")
+
+
 def init_db():
     """Initializes tables and seeds default user accounts and battery catalog."""
     from api.auth import hash_password
@@ -156,10 +235,12 @@ def init_db():
     with get_db() as conn:
         if USE_POSTGRES:
             with conn.cursor() as cursor:
-                # 1. Users table (Neon Postgres)
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+
+                # 1. Users table (PostgreSQL)
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     email TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     full_name TEXT NOT NULL,
@@ -178,8 +259,8 @@ def init_db():
                 # 2. PV Profiles table
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS pv_profiles (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     pv_capacity_kwp REAL NOT NULL,
                     governorate TEXT NOT NULL,
                     inverter_brand TEXT NOT NULL,
@@ -196,7 +277,7 @@ def init_db():
                 # 3. Battery Catalog table
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS battery_catalog (
-                    id SERIAL PRIMARY KEY,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     brand TEXT NOT NULL,
                     model TEXT NOT NULL,
                     chemistry TEXT NOT NULL,
@@ -219,9 +300,9 @@ def init_db():
                 # 4. Battery Requests table (Many requests per citizen)
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS battery_requests (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    battery_id INTEGER NOT NULL REFERENCES battery_catalog(id),
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    battery_id UUID NOT NULL REFERENCES battery_catalog(id),
                     profile_snapshot JSONB NOT NULL,
                     simulation_results JSONB NOT NULL,
                     appliances JSONB DEFAULT '[]',
@@ -241,8 +322,8 @@ def init_db():
                 # 5. Installation Tracking table
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS installation_tracking (
-                    id SERIAL PRIMARY KEY,
-                    request_id INTEGER UNIQUE NOT NULL REFERENCES battery_requests(id) ON DELETE CASCADE,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    request_id UUID UNIQUE NOT NULL REFERENCES battery_requests(id) ON DELETE CASCADE,
                     stage TEXT CHECK(stage IN ('APPROVED', 'INSTALLATION_SCHEDULED', 'INSTALLING', 'COMMISSIONING', 'ACTIVE')) DEFAULT 'APPROVED',
                     installer_name TEXT,
                     scheduled_date TEXT,
@@ -259,7 +340,7 @@ def init_db():
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS email_tokens (
                     jti TEXT PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     purpose TEXT NOT NULL,
                     expires_at TIMESTAMPTZ NOT NULL,
                     used_at TIMESTAMPTZ DEFAULT NULL
@@ -267,17 +348,23 @@ def init_db():
                 """)
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens(user_id);")
 
-                # Ensure default demo accounts exist with correct passwords
-                admin_pw = hash_password("admin123")
-                citizen_pw = hash_password("citizen123")
-                cursor.execute("""
-                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
-                VALUES 
-                    ('admin@example.com', %s, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', TRUE),
-                    ('citizen@example.com', %s, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', TRUE),
-                    ('rayenchaaben0704@gmail.com', %s, 'Rayen Chaaben', 'CITIZEN', 'POL-784920-RAY', TRUE)
-                ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
-                """, (admin_pw, citizen_pw, citizen_pw))
+                _migrate_postgres_integer_ids(cursor)
+
+                # Optional bootstrap admin. Credentials must be supplied through
+                # environment variables and are never hardcoded in the source.
+                initial_admin_email = os.getenv("INITIAL_ADMIN_EMAIL")
+                initial_admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
+                if initial_admin_email and initial_admin_password:
+                    cursor.execute("""
+                    INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
+                    VALUES (%s, %s, %s, 'ADMIN', %s, TRUE)
+                    ON CONFLICT (email) DO NOTHING;
+                    """, (
+                        initial_admin_email,
+                        hash_password(initial_admin_password),
+                        os.getenv("INITIAL_ADMIN_NAME", "System Administrator"),
+                        os.getenv("INITIAL_ADMIN_CONTRACT"),
+                    ))
 
                 # Seed battery catalog if empty
                 cursor.execute("SELECT COUNT(*) FROM battery_catalog;")
@@ -395,17 +482,21 @@ def init_db():
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens(user_id);")
 
-            # Ensure default demo accounts exist with correct passwords
-            admin_pw = hash_password("admin123")
-            citizen_pw = hash_password("citizen123")
-            cursor.execute("""
-            INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
-            VALUES 
-                ('admin@example.com', ?, 'Ingénieur Contrôleur STEG', 'ADMIN', 'STEG-HQ-001', 1),
-                ('citizen@example.com', ?, 'Mohamed Ben Salem', 'CITIZEN', 'POL-784920-TUN', 1),
-                ('rayenchaaben0704@gmail.com', ?, 'Rayen Chaaben', 'CITIZEN', 'POL-784920-RAY', 1)
-            ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash;
-            """, (admin_pw, citizen_pw, citizen_pw))
+            # Optional bootstrap admin. Credentials must be supplied through
+            # environment variables and are never hardcoded in the source.
+            initial_admin_email = os.getenv("INITIAL_ADMIN_EMAIL")
+            initial_admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
+            if initial_admin_email and initial_admin_password:
+                cursor.execute("""
+                INSERT INTO users (email, password_hash, full_name, role, steg_contract_no, is_verified)
+                VALUES (?, ?, ?, 'ADMIN', ?, 1)
+                ON CONFLICT(email) DO NOTHING;
+                """, (
+                    initial_admin_email,
+                    hash_password(initial_admin_password),
+                    os.getenv("INITIAL_ADMIN_NAME", "System Administrator"),
+                    os.getenv("INITIAL_ADMIN_CONTRACT"),
+                ))
 
             cursor.execute("SELECT COUNT(*) as cnt FROM battery_catalog;")
             if cursor.fetchone()["cnt"] == 0:

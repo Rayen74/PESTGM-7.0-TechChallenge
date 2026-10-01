@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 import sys
+from threading import Lock
 from pathlib import Path
 from typing import Literal, Optional, List, Dict, Any
 
@@ -33,14 +34,43 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for Next.js frontend
+# Enable CORS for the configured frontend. Local origins are convenient for
+# development; production must explicitly provide an HTTPS frontend origin.
+environment = os.getenv("ENVIRONMENT", "development").lower()
+frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+if environment == "production" and not frontend_origin.startswith("https://"):
+    raise RuntimeError("FRONTEND_ORIGIN must use HTTPS in production.")
+allowed_origins = (
+    [frontend_origin]
+    if environment == "production"
+    else [frontend_origin, "http://localhost:3000", "http://127.0.0.1:3000"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=list(dict.fromkeys(allowed_origins)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    """Add baseline browser protections without changing API payloads."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.url.path.startswith("/api/battery/auth/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
 
 # Mount Battery Module Router & Auth Router
 from api.routes_battery import router as battery_router
@@ -57,7 +87,22 @@ except Exception as e:
 
 
 
+_forecast_cache: Optional[pd.DataFrame] = None
+_forecast_cache_mtime_ns: Optional[int] = None
+_forecast_cache_lock = Lock()
+
+
+def _set_forecast_cache(df: pd.DataFrame, source_mtime_ns: Optional[int] = None) -> pd.DataFrame:
+    global _forecast_cache, _forecast_cache_mtime_ns
+    with _forecast_cache_lock:
+        _forecast_cache = df
+        _forecast_cache_mtime_ns = source_mtime_ns
+    return df
+
+
 def get_cached_or_generate_forecast() -> pd.DataFrame:
+    """Load the forecast once and reuse it until the forecast file changes."""
+    global _forecast_cache, _forecast_cache_mtime_ns
     latest_path = config.DATA_PROCESSED_DIR / "latest_forecast.csv"
     if not latest_path.exists():
         df = predict_for_all_governorates(
@@ -68,11 +113,16 @@ def get_cached_or_generate_forecast() -> pd.DataFrame:
         )
         if not df.empty:
             save_forecast(df)
-        return df
+        return _set_forecast_cache(df)
+
+    source_mtime_ns = latest_path.stat().st_mtime_ns
+    with _forecast_cache_lock:
+        if _forecast_cache is not None and _forecast_cache_mtime_ns == source_mtime_ns:
+            return _forecast_cache
 
     df = pd.read_csv(latest_path)
     df["time"] = pd.to_datetime(df["time"], utc=True)
-    return df
+    return _set_forecast_cache(df, source_mtime_ns)
 
 
 @app.get("/api/meta")
@@ -198,6 +248,7 @@ def refresh_forecast(
         raise HTTPException(status_code=500, detail="Forecast regeneration failed.")
 
     save_forecast(fresh_df)
+    _set_forecast_cache(fresh_df, (config.DATA_PROCESSED_DIR / "latest_forecast.csv").stat().st_mtime_ns)
     return {
         "status": "success",
         "message": f"Successfully updated forecast for 24 governorates across {days} days.",
@@ -227,30 +278,38 @@ def get_spatial_summary(
     else:
         df_filtered = df_all.copy()
 
+    # Aggregate all governorates in one pandas operation instead of scanning
+    # the complete DataFrame once per governorate.
+    positive_df = df_filtered[df_filtered["P"] > 0]
+    gov_summary_df = df_filtered.groupby("governorate", as_index=False).agg(
+        peak_power_base=("P", "max"),
+        peak_g=("G(i)", "max"),
+    )
+    certainty_df = positive_df.groupby("governorate", as_index=False).agg(
+        avg_cert=("certitude_pct", "mean"),
+    )
+    gov_summary_df = gov_summary_df.merge(certainty_df, on="governorate", how="left")
+    gov_summary_df["avg_cert"] = gov_summary_df["avg_cert"].fillna(100.0)
+
+    if unit == "kW":
+        unit_multiplier = capacity_kwp / 1000.0
+    elif unit == "MW":
+        unit_multiplier = capacity_kwp / 1_000_000.0
+    else:
+        unit_multiplier = capacity_kwp
+
     gov_summary = []
-    for gov, (lat, lon) in GOVERNORATES.items():
-        sub = df_filtered[df_filtered["governorate"] == gov]
-        if not sub.empty:
-            p_peak_base = sub["P"].max()
-            if unit == "kW":
-                scaled_peak = p_peak_base * (capacity_kwp / 1000.0)
-            elif unit == "MW":
-                scaled_peak = p_peak_base * (capacity_kwp / 1_000_000.0)
-            else:
-                scaled_peak = p_peak_base * capacity_kwp
-
-            day_sub = sub[sub["P"] > 0]
-            avg_cert = day_sub["certitude_pct"].mean() if not day_sub.empty else 100.0
-
-            gov_summary.append({
-                "governorate": gov,
-                "district": config.GOVERNORATE_TO_DISTRICT.get(gov, "Autre"),
-                "latitude": lat,
-                "longitude": lon,
-                "peak_power": round(float(scaled_peak), 2),
-                "peak_gi": round(float(sub["G(i)"].max()), 0),
-                "avg_cert": round(float(avg_cert), 1),
-            })
+    for row in gov_summary_df.itertuples(index=False):
+        lat, lon = GOVERNORATES.get(row.governorate, (None, None))
+        gov_summary.append({
+            "governorate": row.governorate,
+            "district": config.GOVERNORATE_TO_DISTRICT.get(row.governorate, "Autre"),
+            "latitude": lat,
+            "longitude": lon,
+            "peak_power": round(float(row.peak_power_base * unit_multiplier), 2),
+            "peak_gi": round(float(row.peak_g), 0),
+            "avg_cert": round(float(row.avg_cert), 1),
+        })
 
     # Group by district
     df_gov = pd.DataFrame(gov_summary)

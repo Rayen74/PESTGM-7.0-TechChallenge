@@ -26,8 +26,11 @@ except ImportError:
 
 from api.database import execute_write, query_one
 
-# JWT Secret: dedicated EMAIL_JWT_SECRET with fallback to JWT_SECRET and STEG_JWT_SECRET
-EMAIL_JWT_SECRET = os.getenv("EMAIL_JWT_SECRET") or os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET", "steg-email-token-secret-fallback-key-2026")
+# Prefer a dedicated key, but allow the application JWT key as an explicitly
+# configured development fallback. Never use a hardcoded signing secret.
+EMAIL_JWT_SECRET = os.getenv("EMAIL_JWT_SECRET") or os.getenv("JWT_SECRET") or os.getenv("STEG_JWT_SECRET")
+if not EMAIL_JWT_SECRET:
+    raise RuntimeError("EMAIL_JWT_SECRET or JWT_SECRET must be configured.")
 JWT_ALGORITHM = "HS256"
 TOKEN_EXPIRY_MINUTES = 4
 
@@ -139,7 +142,7 @@ def _decode_jwt(token: str, secret: str) -> Dict[str, Any]:
     return payload
 
 
-def issue_token(db, user_id: int, purpose: str = "verify_email") -> str:
+def issue_token(db, user_id: str, purpose: str = "verify_email") -> str:
     """
     Issues a new single-use email JWT token valid for 4 minutes.
     1. Invalidates all old unused tokens for the user and purpose.
@@ -176,14 +179,14 @@ def issue_token(db, user_id: int, purpose: str = "verify_email") -> str:
     return _encode_jwt(payload, EMAIL_JWT_SECRET)
 
 
-def consume_token(db, token: str, purpose: str = "verify_email") -> int:
+def consume_token(db, token: str, purpose: str = "verify_email") -> str:
     """
     Validates and atomically consumes a single-use JWT email token.
     1. Pinned decode HS256 and checks exp claim.
     2. Validates purpose claim.
     3. Atomic UPDATE ... SET used_at=now WHERE jti=%s AND used_at IS NULL.
     4. If rowcount != 1: check if jti exists and is already used -> TokenAlreadyUsed, else TokenInvalid.
-    5. Returns integer user_id.
+    5. Returns UUID user_id as a string.
     """
     if not token or not isinstance(token, str):
         raise TokenInvalid("Jeton absent ou vide.")
@@ -201,10 +204,7 @@ def consume_token(db, token: str, purpose: str = "verify_email") -> int:
     if not jti or not sub:
         raise TokenInvalid("Jeton incomplet : identifiant ou sujet manquant.")
 
-    try:
-        user_id = int(sub)
-    except (ValueError, TypeError):
-        raise TokenInvalid("Identifiant utilisateur invalide dans le jeton.")
+    user_id = str(sub)
 
     # 3. Atomic consume
     now = datetime.now(timezone.utc)
