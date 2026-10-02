@@ -109,6 +109,7 @@ export const DispatchTab: React.FC<DispatchTabProps> = ({
                 <th className={`py-2.5 px-3 ${isRtl ? "text-left" : "text-right"}`}>{t.dispatch.thLower}</th>
                 <th className={`py-2.5 px-3 ${isRtl ? "text-left" : "text-right"}`}>{t.dispatch.thUpper}</th>
                 <th className={`py-2.5 px-3 ${isRtl ? "text-left" : "text-right"}`}>{t.dispatch.thCertainty}</th>
+                <th className={`py-2.5 px-3 ${isRtl ? "text-left" : "text-right"}`}>Risk</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -132,11 +133,16 @@ export const DispatchTab: React.FC<DispatchTabProps> = ({
                   <td className={`py-2.5 px-3 text-sky-400 ${isRtl ? "text-left" : "text-right"}`}>
                     {formatNumber(row.certitude_pct, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                   </td>
+                  <td className={`py-2.5 px-3 ${isRtl ? "text-left" : "text-right"}`}>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${row.certitude_pct < 50 ? "bg-red-500/10 text-red-300" : row.certitude_pct < 80 ? "bg-amber-500/10 text-amber-300" : "bg-emerald-500/10 text-emerald-300"}`}>
+                      {row.certitude_pct < 50 ? "High" : row.certitude_pct < 80 ? "Medium" : "Low"}
+                    </span>
+                  </td>
                 </tr>
               ))}
               {currentRecords.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 font-sans">
+                  <td colSpan={7} className="py-8 text-center text-slate-500 font-sans">
                     {t.dispatch.noMatch}
                   </td>
                 </tr>

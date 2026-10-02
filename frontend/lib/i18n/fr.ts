@@ -157,6 +157,7 @@ export const fr: TranslationDictionary = {
     dispatch: "Dispatch Réseau",
     monitor: "Surveillance Météo",
     requests: "Demandes Batteries",
+    risk: "Operations de risque",
   },
   forecast: {
     title: "Votre prévision solaire",
@@ -178,6 +179,19 @@ export const fr: TranslationDictionary = {
     lessCertain: "Incertitude modérée",
     aboutTitle: "À propos de cette prévision",
     aboutDesc: "La valeur attendue est calculée à partir des relevés météo récents et de l'historique d'ensoleillement tunisien. Les bornes basse et haute indiquent l'intervalle de couverture sélectionné à {ciLevel}%.",
+  },
+  risk: {
+    title: "Operations de risque", citizenTitle: "Risque et conseils",
+    citizenIntro: "Consultez la fiabilite de la prevision et utilisez votre batterie en securite.",
+    provisional: "Provisoire : les mesures reelles des installations ne sont pas encore disponibles.",
+    low: "Risque faible", medium: "Risque moyen", high: "Risque eleve", reason: "Raison",
+    weatherUnavailable: "Les donnees meteo de risque sont indisponibles ; les previsions restent inchangees.",
+    clouds: "Nuages", rain: "Pluie", wind: "Vent", reserve: "Reserve batterie",
+    charging: "Charge", discharging: "Decharge", conservative: "Valeur prudente",
+    shortfall: "Deficit possible", gridReserve: "Reserve reseau recommandee",
+    dispatch: "Recommandation de dispatch", review: "Une revue humaine est requise avant la planification reseau.",
+    open: "Voir les details du risque", close: "Fermer",
+    noActive: "Les conseils de risque seront disponibles lorsque votre batterie sera active.",
   },
   map: {
     title: "Carte Géographique Complète & Répartition Solaire en Tunisie",

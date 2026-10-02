@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { TimeSeriesItem } from "@/lib/types";
+import { RiskAssessment, TimeSeriesItem } from "@/lib/types";
+import { fetchRiskAssessment } from "@/lib/api";
+import { RiskCard } from "@/components/RiskCard";
 import { useI18n } from "@/lib/i18n";
 
 interface ForecastTabProps {
@@ -10,11 +12,15 @@ interface ForecastTabProps {
   displayUnit: string;
   ciLevel: number;
   entityLabel: string;
+  showRisk?: boolean;
+  citizen?: boolean;
+  riskCoordinates?: { latitude?: number; longitude?: number };
 }
 
-export const ForecastTab: React.FC<ForecastTabProps> = ({ timeseries, displayUnit, ciLevel, entityLabel }) => {
+export const ForecastTab: React.FC<ForecastTabProps> = ({ timeseries, displayUnit, ciLevel, entityLabel, showRisk = false, citizen = false, riskCoordinates }) => {
   const { t, formatNumber, formatDate, formatDateTime, isRtl, translateDistrict, translateGovernorate } = useI18n();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [risk, setRisk] = useState<RiskAssessment | null>(null);
 
   const formatTime = (value: string) => {
     const date = new Date(value);
@@ -32,6 +38,15 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({ timeseries, displayUni
   const span = Math.max(upper - lower, 1);
   const marker = Math.min(100, Math.max(0, ((expected - lower) / span) * 100));
   const certainty = selected?.certitude_pct ?? 0;
+
+  useEffect(() => {
+    if (!showRisk || !selected) { setRisk(null); return; }
+    let cancelled = false;
+    fetchRiskAssessment({ expected, lower, upper, certitude_pct: certainty, ...riskCoordinates })
+      .then((value) => { if (!cancelled) setRisk(value); })
+      .catch(() => { if (!cancelled) setRisk(null); });
+    return () => { cancelled = true; };
+  }, [showRisk, selectedIndex, selected?.time, expected, lower, upper, certainty, riskCoordinates?.latitude, riskCoordinates?.longitude]);
 
   const certaintyStyles =
     certainty > 80
@@ -210,6 +225,8 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({ timeseries, displayUni
           </p>
         </div>
       )}
+
+      {showRisk && risk && <RiskCard risk={risk} unit={displayUnit} citizen={citizen} />}
 
       <details className="rounded-2xl border border-slate-800 bg-slate-900/50 px-5 py-4 text-sm text-slate-400">
         <summary className="cursor-pointer font-medium text-slate-300">{t.forecast.aboutTitle}</summary>

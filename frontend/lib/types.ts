@@ -32,6 +32,33 @@ export interface ForecastResponse {
   };
 }
 
+export interface RiskAssessment {
+  risk_level: "LOW" | "MEDIUM" | "HIGH";
+  risk_reason: string;
+  expected_value: number;
+  lower_value: number;
+  upper_value: number;
+  certitude_pct: number;
+  conservative_value: number;
+  possible_shortfall: number;
+  recommended_grid_reserve_pct: number;
+  dispatch_recommendation: string;
+  battery_reserve_advice: string;
+  charging_guidance: string;
+  discharging_guidance: string;
+  human_review_required: boolean;
+  provisional: boolean;
+  weather: {
+    available: boolean;
+    cloud_cover_pct?: number | null;
+    rain_mm?: number | null;
+    wind_mps?: number | null;
+    variability?: "LOW" | "MEDIUM" | "HIGH" | null;
+    factors: string[];
+    message?: string;
+  };
+}
+
 export interface GovernorateSummary {
   governorate: string;
   district: string;

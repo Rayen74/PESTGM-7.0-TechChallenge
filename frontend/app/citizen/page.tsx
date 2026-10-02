@@ -13,8 +13,11 @@ import {
   fetchPVProfile,
   savePVProfile,
   getAgentRecommendation,
+  fetchForecast,
+  fetchMetadata,
 } from "@/lib/api";
-import { BatteryItem, BatteryRequestItem, ApplianceItem, AgentRecommendation } from "@/lib/types";
+import { BatteryItem, BatteryRequestItem, ApplianceItem, AgentRecommendation, ForecastResponse } from "@/lib/types";
+import { CitizenRiskTab } from "@/components/tabs/CitizenRiskTab";
 import {
   Sun,
   LogOut,
@@ -41,7 +44,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-type CitizenTab = "home" | "catalog" | "requests";
+type CitizenTab = "home" | "risk" | "catalog" | "requests";
 
 export default function CitizenDashboard() {
   const router = useRouter();
@@ -57,6 +60,10 @@ export default function CitizenDashboard() {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [profileReady, setProfileReady] = useState(false);
+  const [pvProfile, setPvProfile] = useState<any>(null);
+  const [citizenForecast, setCitizenForecast] = useState<ForecastResponse | null>(null);
+  const [riskCoordinates, setRiskCoordinates] = useState<{ latitude?: number; longitude?: number }>({});
+  const [governorates, setGovernorates] = useState<{ name: string; lat: number; lon: number }[]>([]);
 
   // ---------- Auth ----------
   useEffect(() => {
@@ -77,6 +84,11 @@ export default function CitizenDashboard() {
             const { is_created, ...profileData } = profile as any;
             await savePVProfile(profileData);
           }
+          setPvProfile(profile);
+          const metadata = await fetchMetadata().catch(() => null);
+          if (metadata) setGovernorates(metadata.governorates);
+          const location = metadata?.governorates.find((g) => g.name === profile?.governorate);
+          if (location) setRiskCoordinates({ latitude: location.lat, longitude: location.lon });
           setProfileReady(true);
         } catch (err: any) {
           if (err?.message?.includes("401") || err?.message?.includes("Non authentifié")) {
@@ -130,9 +142,22 @@ export default function CitizenDashboard() {
 
   useEffect(() => {
     if (!sess) return;
+    loadRequests();
     if (activeTab === "catalog") loadCatalog();
     if (activeTab === "requests") loadRequests();
   }, [activeTab, sess, loadCatalog, loadRequests]);
+
+  useEffect(() => {
+    if (!sess || !pvProfile?.governorate) return;
+    fetchForecast({
+      scale_level: "governorate",
+      entity_name: pvProfile.governorate,
+      horizon: "d_to_d3",
+      capacity_kwp: Number(pvProfile.pv_capacity_kwp || 1),
+      unit: "kW",
+      confidence_level: 90,
+    }).then(setCitizenForecast).catch(() => setCitizenForecast(null));
+  }, [sess, pvProfile]);
 
   // ---------- AI Recommendation State ----------
   const [aiRecommendation, setAiRecommendation] = useState<AgentRecommendation | null>(null);
@@ -269,11 +294,28 @@ export default function CitizenDashboard() {
 
   const TABS: { key: CitizenTab; icon: React.ElementType; label: string }[] = [
     { key: "home", icon: Home, label: t.citizen.tabHome },
+    { key: "risk", icon: ShieldCheck, label: "Risk & guidance" },
     { key: "catalog", icon: Battery, label: t.citizen.tabCatalog },
     { key: "requests", icon: ClipboardList, label: t.citizen.tabRequests },
   ];
 
   const ChevronIcon = isRtl ? ChevronLeft : ChevronRight;
+  const activeBattery = myRequests.some((request) => request.tracking_stage === "ACTIVE");
+
+  const handleLocationChange = async (governorate: string) => {
+    if (!pvProfile) return;
+    const nextProfile = { ...pvProfile, governorate };
+    delete nextProfile.is_created;
+    setPvProfile(nextProfile);
+    const location = governorates.find((item) => item.name === governorate);
+    setRiskCoordinates(location ? { latitude: location.lat, longitude: location.lon } : {});
+    try {
+      await savePVProfile(nextProfile);
+    } catch (err: any) {
+      setToast(err?.message || "Unable to save the selected location.");
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100">
@@ -351,6 +393,25 @@ export default function CitizenDashboard() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+              <label htmlFor="citizen-location" className="block text-sm font-semibold text-slate-100">
+                Forecast location
+              </label>
+              <p className="mt-1 text-xs text-slate-500">Choose the governorate where your solar installation is located.</p>
+              <select
+                id="citizen-location"
+                value={pvProfile?.governorate || ""}
+                onChange={(event) => handleLocationChange(event.target.value)}
+                disabled={!pvProfile || governorates.length === 0}
+                className="mt-3 w-full max-w-md rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+              >
+                <option value="" disabled>Select a governorate</option>
+                {governorates.map((governorate) => (
+                  <option key={governorate.name} value={governorate.name}>{governorate.name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Quick action cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button
@@ -420,6 +481,16 @@ export default function CitizenDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === "risk" && citizenForecast && (
+          <CitizenRiskTab
+            forecast={citizenForecast}
+            displayUnit="kW"
+            entityLabel={pvProfile?.governorate || "your area"}
+            activeBattery={activeBattery}
+            riskCoordinates={riskCoordinates}
+          />
         )}
 
         {/* ============ BATTERY CATALOG ============ */}

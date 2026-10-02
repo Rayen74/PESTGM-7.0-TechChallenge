@@ -148,6 +148,12 @@ export const MapTab: React.FC<MapTabProps> = ({
                     </div>
                     <ShieldCheck className="w-5 h-5 text-emerald-400" />
                   </div>
+                  <div className={`p-2.5 rounded-lg border col-span-2 ${selectedGov.avg_cert < 50 ? "border-red-500/30 bg-red-500/5" : selectedGov.avg_cert < 80 ? "border-amber-500/30 bg-amber-500/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
+                    <span className="text-[10px] text-slate-400 block">Operational risk ? provisional</span>
+                    <span className={`text-sm font-bold ${selectedGov.avg_cert < 50 ? "text-red-300" : selectedGov.avg_cert < 80 ? "text-amber-300" : "text-emerald-300"}`}>
+                      {selectedGov.avg_cert < 50 ? "High ? plan near the lower bound" : selectedGov.avg_cert < 80 ? "Medium ? preserve reserve capacity" : "Low ? follow expected forecast"}
+                    </span>
+                  </div>
                 </div>
               </div>
             ) : (

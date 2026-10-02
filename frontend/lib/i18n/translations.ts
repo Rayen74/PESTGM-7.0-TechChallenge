@@ -157,6 +157,7 @@ export interface TranslationDictionary {
     dispatch: string;
     monitor: string;
     requests: string;
+    risk: string;
   };
   forecast: {
     title: string;
@@ -178,6 +179,13 @@ export interface TranslationDictionary {
     lessCertain: string;
     aboutTitle: string;
     aboutDesc: string;
+  };
+  risk: {
+    title: string; citizenTitle: string; citizenIntro: string; provisional: string;
+    low: string; medium: string; high: string; reason: string; weatherUnavailable: string;
+    clouds: string; rain: string; wind: string; reserve: string; charging: string;
+    discharging: string; conservative: string; shortfall: string; gridReserve: string;
+    dispatch: string; review: string; open: string; close: string; noActive: string;
   };
   map: {
     title: string;

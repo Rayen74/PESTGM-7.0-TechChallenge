@@ -27,6 +27,7 @@ from src import config
 from src.forecast import GOVERNORATES, predict_for_all_governorates, save_forecast
 from src.dispatch_export import prepare_dispatch_dataframe, export_dispatch_csv, export_dispatch_json
 from src.weather_monitor import check_api_health, load_health_telemetry
+from api.risk import assess_risk
 
 app = FastAPI(
     title="Tunisia Solar Forecasting API",
@@ -77,6 +78,21 @@ from api.routes_battery import router as battery_router
 from api.auth import auth_router
 app.include_router(battery_router)
 app.include_router(auth_router)
+
+
+@app.get("/api/risk/assessment")
+def get_risk_assessment(
+    expected: float = Query(...),
+    lower: float = Query(...),
+    upper: float = Query(...),
+    certitude_pct: float = Query(..., ge=0, le=100),
+    latitude: Optional[float] = Query(None, ge=-90, le=90),
+    longitude: Optional[float] = Query(None, ge=-180, le=180),
+):
+    """Return provisional risk enrichment for an already calculated forecast."""
+    if not all(np.isfinite(value) for value in (expected, lower, upper, certitude_pct)):
+        raise HTTPException(status_code=422, detail="Invalid forecast values")
+    return assess_risk(expected, lower, upper, certitude_pct, latitude, longitude)
 
 # Initialize database schema and seeds
 from api.database import init_db

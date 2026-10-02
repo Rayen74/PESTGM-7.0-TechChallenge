@@ -13,6 +13,7 @@ import {
   User,
   AgentAuditReport,
   AgentRecommendation,
+  RiskAssessment,
 } from "./types";
 
 
@@ -56,6 +57,25 @@ export async function fetchForecast(params: {
 
   const res = await fetch(`${API_BASE}/api/forecast?${query.toString()}`);
   if (!res.ok) throw new Error("Échec de la récupération des prévisions");
+  return res.json();
+}
+
+export async function fetchRiskAssessment(params: {
+  expected: number;
+  lower: number;
+  upper: number;
+  certitude_pct: number;
+  latitude?: number;
+  longitude?: number;
+}): Promise<RiskAssessment> {
+  const query = new URLSearchParams({
+    expected: String(params.expected), lower: String(params.lower), upper: String(params.upper),
+    certitude_pct: String(params.certitude_pct),
+  });
+  if (params.latitude !== undefined) query.set("latitude", String(params.latitude));
+  if (params.longitude !== undefined) query.set("longitude", String(params.longitude));
+  const res = await fetch(`${API_BASE}/api/risk/assessment?${query.toString()}`);
+  if (!res.ok) throw new Error("Risk assessment unavailable");
   return res.json();
 }
 

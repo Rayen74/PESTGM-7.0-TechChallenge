@@ -13,6 +13,7 @@ import { ForecastTab } from "@/components/tabs/ForecastTab";
 import { MapTab } from "@/components/tabs/MapTab";
 import { MonitorTab } from "@/components/tabs/MonitorTab";
 import { DispatchTab } from "@/components/tabs/DispatchTab";
+import { RiskOperationsTab } from "@/components/tabs/RiskOperationsTab";
 import {
   fetchForecast,
   fetchSpatialSummary,
@@ -91,7 +92,7 @@ export default function AdminDashboard() {
 
   // ---------- Active Tab ----------
   const [activeTab, setActiveTab] = useState<
-    "forecast" | "map" | "dispatch" | "monitor" | "requests"
+    "forecast" | "risk" | "map" | "dispatch" | "monitor" | "requests"
   >("forecast");
 
   // ---------- API Data ----------
@@ -397,6 +398,7 @@ export default function AdminDashboard() {
 
   const TABS = [
     { key: "forecast", icon: BarChart3, label: t.tabs.forecast },
+    { key: "risk", icon: ShieldAlert, label: t.risk.title },
     { key: "map", icon: Map, label: t.tabs.map },
     { key: "dispatch", icon: Zap, label: t.tabs.dispatch },
     { key: "monitor", icon: Activity, label: t.tabs.monitor },
@@ -495,6 +497,20 @@ export default function AdminDashboard() {
                 </div>
               )}
 
+              {activeTab === "risk" && forecastData && (
+                <RiskOperationsTab
+                  forecast={forecastData}
+                  displayUnit={displayUnit}
+                  ciLevel={ciLevel}
+                  entityLabel={entityLabel}
+                  riskCoordinates={
+                    spatialData?.governorates.find((g) => g.governorate === selectedGov)
+                      ? { latitude: spatialData.governorates.find((g) => g.governorate === selectedGov)?.latitude, longitude: spatialData.governorates.find((g) => g.governorate === selectedGov)?.longitude }
+                      : { latitude: 36.8065, longitude: 10.1815 }
+                  }
+                />
+              )}
+
               {activeTab === "map" && spatialData && (
                 <MapTab
                   governorates={spatialData.governorates}
@@ -523,6 +539,9 @@ export default function AdminDashboard() {
               {/* Battery Requests Tab */}
               {activeTab === "requests" && (
                 <div className="space-y-4">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+                    <strong>Provisional forecast risk:</strong> use the forecast interval and reserve guidance before approving a battery request. High-risk forecasts require human review.
+                  </div>
                   {/* Filter bar */}
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-xs text-slate-500 font-medium">{t.adminRequests.filterLabel}</span>
