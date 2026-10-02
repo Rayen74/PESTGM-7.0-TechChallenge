@@ -162,6 +162,7 @@ def get_forecast(
     scale_level: Literal["national", "district", "governorate"] = Query("national"),
     entity_name: Optional[str] = Query(None),
     horizon: Literal["intra_day", "d_to_d3", "full"] = Query("d_to_d3"),
+    forecast_date: Optional[str] = Query(None, description="First forecast date in YYYY-MM-DD format"),
     capacity_kwp: float = Query(1.0, gt=0),
     unit: Literal["W", "kW", "MW"] = Query("kW"),
     confidence_level: float = Query(0.90, ge=0.80, le=0.98),
@@ -181,6 +182,14 @@ def get_forecast(
         df_filtered = df_all[df_all["is_d_to_d3"] == True].copy()
     else:
         df_filtered = df_all.copy()
+
+    if forecast_date:
+        try:
+            selected_date = pd.to_datetime(forecast_date, format="%Y-%m-%d").date()
+            forecast_dates = pd.to_datetime(df_filtered["date"]).dt.date
+            df_filtered = df_filtered[forecast_dates >= selected_date].copy()
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="forecast_date must use YYYY-MM-DD format")
 
     # Aggregate & scale
     dispatch_df = prepare_dispatch_dataframe(

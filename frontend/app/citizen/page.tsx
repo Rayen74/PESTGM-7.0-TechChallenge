@@ -18,6 +18,8 @@ import {
 } from "@/lib/api";
 import { BatteryItem, BatteryRequestItem, ApplianceItem, AgentRecommendation, ForecastResponse } from "@/lib/types";
 import { CitizenRiskTab } from "@/components/tabs/CitizenRiskTab";
+import { ForecastTab } from "@/components/tabs/ForecastTab";
+import { KpiCards } from "@/components/KpiCards";
 import {
   Sun,
   LogOut,
@@ -42,15 +44,17 @@ import {
   Wrench,
   Bot,
   Sparkles,
+  BarChart3,
 } from "lucide-react";
 
-type CitizenTab = "home" | "risk" | "catalog" | "requests";
+type CitizenTab = "home" | "forecast" | "risk" | "catalog" | "requests";
+type HorizonCode = "intra_day" | "d_to_d3" | "full";
 
 export default function CitizenDashboard() {
   const router = useRouter();
   const { t, formatNumber, formatDate, isRtl, translateStatus, translateStage } = useI18n();
   const [sess, setSess] = useState<{ email: string; role: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<CitizenTab>("home");
+  const [activeTab, setActiveTab] = useState<CitizenTab>("forecast");
 
   // ---------- Data ----------
   const [batteries, setBatteries] = useState<BatteryItem[]>([]);
@@ -63,6 +67,8 @@ export default function CitizenDashboard() {
   const [pvProfile, setPvProfile] = useState<any>(null);
   const [citizenForecast, setCitizenForecast] = useState<ForecastResponse | null>(null);
   const [riskCoordinates, setRiskCoordinates] = useState<{ latitude?: number; longitude?: number }>({});
+  const [forecastDate, setForecastDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [forecastHorizon, setForecastHorizon] = useState<HorizonCode>("d_to_d3");
   const [governorates, setGovernorates] = useState<{ name: string; lat: number; lon: number }[]>([]);
 
   // ---------- Auth ----------
@@ -152,12 +158,13 @@ export default function CitizenDashboard() {
     fetchForecast({
       scale_level: "governorate",
       entity_name: pvProfile.governorate,
-      horizon: "d_to_d3",
+      horizon: forecastHorizon,
+      forecast_date: forecastDate,
       capacity_kwp: Number(pvProfile.pv_capacity_kwp || 1),
       unit: "kW",
       confidence_level: 90,
     }).then(setCitizenForecast).catch(() => setCitizenForecast(null));
-  }, [sess, pvProfile]);
+  }, [sess, pvProfile, forecastDate, forecastHorizon]);
 
   // ---------- AI Recommendation State ----------
   const [aiRecommendation, setAiRecommendation] = useState<AgentRecommendation | null>(null);
@@ -294,6 +301,7 @@ export default function CitizenDashboard() {
 
   const TABS: { key: CitizenTab; icon: React.ElementType; label: string }[] = [
     { key: "home", icon: Home, label: t.citizen.tabHome },
+    { key: "forecast", icon: BarChart3, label: t.tabs.forecast },
     { key: "risk", icon: ShieldCheck, label: "Risk & guidance" },
     { key: "catalog", icon: Battery, label: t.citizen.tabCatalog },
     { key: "requests", icon: ClipboardList, label: t.citizen.tabRequests },
@@ -377,6 +385,13 @@ export default function CitizenDashboard() {
 
       {/* ---- Content ---- */}
       <main className="max-w-6xl w-full mx-auto p-4 sm:p-6 flex-1">
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div><h2 className="text-sm font-bold text-slate-100">Forecast date and horizon</h2><p className="mt-1 text-xs text-slate-500">Choose the starting date and forecast period.</p></div>
+            <label className="text-xs font-semibold text-slate-300">Date<input type="date" value={forecastDate} onChange={(event) => setForecastDate(event.target.value)} className="mt-1 block rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200" /></label>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">{([["intra_day", t.sidebar.horizonIntraDay], ["d_to_d3", t.sidebar.horizonD3], ["full", t.sidebar.horizonExtended]] as const).map(([code, label]) => (<label key={code} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${forecastHorizon === code ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300" : "border-transparent text-slate-400"}`}><input type="radio" name="citizenForecastHorizon" checked={forecastHorizon === code} onChange={() => setForecastHorizon(code)} className="accent-emerald-500" />{label}</label>))}</div>
+        </div>
         {/* ============ HOME ============ */}
         {activeTab === "home" && (
           <div className="space-y-8">
@@ -411,6 +426,18 @@ export default function CitizenDashboard() {
                 ))}
               </select>
             </div>
+
+            {citizenForecast && (
+              <div className="space-y-6">
+                <KpiCards kpis={citizenForecast.kpis} />
+                <ForecastTab
+                  timeseries={citizenForecast.timeseries}
+                  displayUnit="kW"
+                  ciLevel={90}
+                  entityLabel={pvProfile?.governorate || "your area"}
+                />
+              </div>
+            )}
 
             {/* Quick action cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -480,6 +507,24 @@ export default function CitizenDashboard() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === "forecast" && (
+          <div className="space-y-6">
+            {citizenForecast ? (
+              <>
+                <KpiCards kpis={citizenForecast.kpis} />
+                <ForecastTab
+                  timeseries={citizenForecast.timeseries}
+                  displayUnit="kW"
+                  ciLevel={90}
+                  entityLabel={pvProfile?.governorate || "your area"}
+                />
+              </>
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-8 text-center text-sm text-slate-400">Loading forecast curve...</div>
+            )}
           </div>
         )}
 

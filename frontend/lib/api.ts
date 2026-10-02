@@ -40,6 +40,7 @@ export async function fetchForecast(params: {
   scale_level: "national" | "district" | "governorate";
   entity_name?: string;
   horizon: "intra_day" | "d_to_d3" | "full";
+  forecast_date?: string;
   capacity_kwp: number;
   unit: "W" | "kW" | "MW";
   confidence_level: number;
@@ -55,6 +56,7 @@ export async function fetchForecast(params: {
     query.set("entity_name", params.entity_name);
   }
 
+  if (params.forecast_date) query.set("forecast_date", params.forecast_date);
   const res = await fetch(`${API_BASE}/api/forecast?${query.toString()}`);
   if (!res.ok) throw new Error("Échec de la récupération des prévisions");
   return res.json();
@@ -448,4 +450,3 @@ export async function getAgentRecommendation(appliances?: ApplianceItem[]): Prom
   }
   return res.json();
 }
-
